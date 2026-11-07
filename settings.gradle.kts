@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Breadcrumb"
-include(":app")
+include(":app", ":benchmark")
