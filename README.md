@@ -150,6 +150,22 @@ The short folder suffix keeps identically named entries separate. Editing retain
 
 Copy the **entire notebook folder** to your hard disk for backup. To restore, copy it to the phone and select it in Settings. Files in this user-selected folder survive app uninstall. An unfinished draft is stored in the app's private storage and is removed by uninstalling the app.
 
+## Code quality checks
+
+Detekt 1.23.8 and Compose Rules 0.4.23 are configured for Kotlin and Compose analysis. Run the following command to generate the HTML, Markdown, XML, and SARIF reports under `app/build/reports/detekt/`.
+
+```bash
+./gradlew :app:detekt
+```
+
+The first scan reported 272 findings, including 14 Compose findings. Initial modifier, layout, loop, and cancellation fixes reduced the result to 254 findings, including 4 Compose findings. The remaining items and suggested follow-up work are documented in the [code quality review](docs/code-quality-review.md).
+
+Detekt currently returns a failing exit status for the remaining findings and is attached to Gradle's `check` task. To run the other checks to completion in the same invocation, use the following command.
+
+```bash
+./gradlew :app:detekt testDebugUnitTest lintDebug assembleDebug --continue
+```
+
 ## Build and run
 
 Requires Android 8.0 or later on the phone, JDK 17, and an Android SDK with API 36 and Build Tools 35.0.0 for development.
@@ -183,10 +199,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | Photo display | Coil with full-screen pinch zoom |
 | UI state | ViewModel, SavedStateHandle, and Compose saved state |
 | Key storage | AES-GCM with a key in Android Keystore |
-| Checks | JUnit tests for URLs, title search, OCR queries, and activity dates, plus Android lint |
+| Checks | JUnit tests, Android lint, Detekt, and Compose Rules |
 
 ## Verification status
 
-The 0.3.0 debug APK builds successfully. All 24 JVM unit tests pass, including legacy single-photo metadata, multiple-photo ordering, edit identity/date preservation, and URL-cleaning checks. Android lint completes with zero errors and 21 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions.
+The debug APK builds successfully. All 24 JVM unit tests pass, including legacy single-photo metadata, multiple-photo ordering, edit identity/date preservation, and URL-cleaning checks. Android lint completes with zero errors and 22 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions. Detekt reports 254 open findings, including 4 Compose findings.
 
 Physical-device checks for camera capture, document-provider behaviour, browser sharing, and Google Lens handoff are pending. Live TinyFish lookup requires a user-provided key and has not been exercised against a live account.
