@@ -12,4 +12,3 @@ internal data class EditorActions(
     val googleImage: () -> Unit,
     val openLink: (String) -> Unit,
 )
-

@@ -1,1 +1,7 @@
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="dev.breadcrumb.app.benchmark" />
+    </queries>
+    <!-- Lets the test runner export traces to the additional output directory on Android 10. -->
+    <application android:requestLegacyExternalStorage="true" />
+</manifest>
