@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProblemLinksTest {
+    @Test fun codeforcesContestAndProblemsetLinksReferToSameProblem() {
+        val url = "https://codeforces.com/contest/2123/problem/A?locale=en"
+        assertEquals("https://codeforces.com/problemset/problem/2123/A", ProblemLinks.normalize(url))
+        assertTrue(ProblemLinks.isSupportedProblem(url))
+        assertEquals("Codeforces 2123 A", ProblemLinks.suggestedTitle(url))
+        assertEquals(ProblemSite.CODEFORCES, ProblemSite.fromUrl(url))
+        assertFalse(ProblemLinks.isSupportedProblem("https://codeforces.com/contest/2123"))
+    }
     @Test fun leetcodeLinksLoseTrackingAndSolutionSuffixes() {
         assertEquals("https://leetcode.com/problems/two-sum/",
             ProblemLinks.normalize(" https://leetcode.com/problems/two-sum/solutions/123?envId=list#comments "))

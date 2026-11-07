@@ -5,6 +5,22 @@ import java.net.URLDecoder
 import java.text.Normalizer
 import java.util.Locale
 
+enum class ProblemSite(val label: String) {
+    LEETCODE("LeetCode"), CODEFORCES("Codeforces"), GEEKSFORGEEKS("GeeksforGeeks"), OTHER("Other sites");
+
+    companion object {
+        fun fromUrl(url: String): ProblemSite {
+            val host = runCatching { URI(url).host.orEmpty().removePrefix("www.").lowercase(Locale.ROOT) }.getOrDefault("")
+            return when (host) {
+                "leetcode.com" -> LEETCODE
+                "codeforces.com" -> CODEFORCES
+                "geeksforgeeks.org", "practice.geeksforgeeks.org" -> GEEKSFORGEEKS
+                else -> OTHER
+            }
+        }
+    }
+}
+
 object ProblemLinks {
     fun normalize(raw: String): String {
         val text = raw.trim()
@@ -25,6 +41,14 @@ object ProblemLinks {
                 return "https://leetcode.com/problems/${segments[1]}/"
             }
         }
+        if (host == "codeforces.com" || host == "www.codeforces.com") {
+            if (segments.size >= 4 && segments[0] == "contest" && segments[2] == "problem") {
+                return "https://codeforces.com/problemset/problem/${segments[1]}/${segments[3]}"
+            }
+            if (segments.size >= 4 && segments[0] == "problemset" && segments[1] == "problem") {
+                return "https://codeforces.com/problemset/problem/${segments[2]}/${segments[3]}"
+            }
+        }
         return URI(uri.scheme.lowercase(Locale.ROOT), null, host, uri.port,
             uri.path.ifEmpty { "/" }, uri.query, null).toASCIIString()
     }
@@ -32,6 +56,9 @@ object ProblemLinks {
     fun suggestedTitle(raw: String): String = runCatching {
         val uri = URI(normalize(raw))
         val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+        if (ProblemSite.fromUrl(raw) == ProblemSite.CODEFORCES && segments.size >= 4) {
+            return@runCatching "Codeforces ${segments[segments.size - 2]} ${segments.last()}"
+        }
         val problemIndex = segments.indexOf("problems")
         val slug = if (problemIndex >= 0) segments.getOrNull(problemIndex + 1) else segments.lastOrNull()
         URLDecoder.decode(slug.orEmpty().replace("+", "%2B"), "UTF-8")
@@ -44,12 +71,16 @@ object ProblemLinks {
     fun isSupportedProblem(raw: String): Boolean = runCatching {
         val uri = URI(normalize(raw))
         val host = uri.host.removePrefix("www.")
-        (host == "leetcode.com" || host == "geeksforgeeks.org" || host == "practice.geeksforgeeks.org") &&
-            Regex("^/problems/[^/]+").containsMatchIn(uri.path.orEmpty())
+        if (host == "codeforces.com") {
+            Regex("^/(problemset/problem/\\d+/[A-Za-z0-9]+|gym/\\d+/problem/[A-Za-z0-9]+)/?$").matches(uri.path.orEmpty())
+        } else {
+            (host == "leetcode.com" || host == "geeksforgeeks.org" || host == "practice.geeksforgeeks.org") &&
+                Regex("^/problems/[^/]+").containsMatchIn(uri.path.orEmpty())
+        }
     }.getOrDefault(false)
 
     fun cleanTitle(title: String): String = title
-        .replace(Regex("\\s*[-|–]\\s*(LeetCode|GeeksforGeeks|Practice).*$", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\s*[-|–]\\s*(LeetCode|GeeksforGeeks|Codeforces|Practice).*$", RegexOption.IGNORE_CASE), "")
         .trim()
 
     fun scanQuery(text: String): String {
