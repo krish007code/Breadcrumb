@@ -1,0 +1,20 @@
+appId: dev.breadcrumb.app.qa
+---
+# Select the disposable MaestroNotebook fixture folder once before running.
+- launchApp
+- tapOn: "Maestro Two Pages"
+- assertVisible: "Photo 1 of 2"
+- tapOn: "Solution photo 1. Tap to enlarge."
+- tapOn: "Next photo"
+- assertVisible: "2 / 2"
+- tapOn: "Close enlarged photo"
+- tapOn: "Back"
+- longPressOn: "Maestro Two Pages"
+- tapOn: "Edit"
+- scrollUntilVisible:
+    element: "Review and save"
+- tapOn: "Review and save"
+- assertVisible: "Save 2 photos"
+- tapOn: "Keep solution photo 2"
+- tapOn: "Save 1 photo"
+- assertVisible: "Photo 1 of 1"

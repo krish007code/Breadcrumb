@@ -1,0 +1,14 @@
+appId: dev.breadcrumb.app.qa
+---
+- launchApp
+- runFlow:
+    when:
+      visible: "Welcome to Breadcrumb"
+    commands:
+      - tapOn: "Continue"
+- tapOn: "Progress"
+- tapOn: "Calendar"
+- scrollUntilVisible:
+    element: "Marked days include every site."
+- tapOn: "Notebook"
+- assertVisible: "Search problem titles"
