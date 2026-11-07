@@ -1,16 +1,16 @@
 # Breadcrumb
 
-An Android notebook for coding problems and handwritten solutions. Save a problem's title, its original link, and a photo of your work. Search the title when you want to revise, view your solution, and open the original question in your browser.
+An Android notebook for coding problems and handwritten solutions. Save a problem's title, its original link, and photos of your work. Search the title when you want to revise, view your solution, and open the original question in your browser.
 
 The interface takes visual direction from [Tally](https://composables.com/apps/tally), including cream backgrounds, rounded white panels, dark buttons, and small colour accents. Breadcrumb's UI components are independently implemented.
 
-[Download the Android APK from GitHub Releases](https://github.com/krish007code/Breadcrumb/releases/tag/v0.2.0). This repository is private. Sign in with the owner account or an invited collaborator account to access the release.
+[Download the Android APK from GitHub Releases](https://github.com/krish007code/Breadcrumb/releases/tag/v0.3.0). This repository is private. Sign in with the owner account or an invited collaborator account to access the release.
 
 ## Use case
 
 You solve a LeetCode, Codeforces, or GeeksforGeeks problem on paper. Instead of retyping your explanation or losing the page, take a solution photo and connect it to the problem link. Your saved work stays in an ordinary folder on your phone, which you can copy to a hard disk.
 
-Each saved entry contains an editable title, a source URL, a site category, and one solution photo. The question remains available through its source URL.
+Each saved entry contains an editable title, a source URL, a site category, and one or more solution photos. The question remains available through its source URL.
 
 ## App flow
 
@@ -56,7 +56,8 @@ flowchart TD
     Return --> Link
     Link --> Title
     Title --> Photo[Photograph or import your handwritten solution]
-    Photo --> Save[Save title, link, and photo together]
+    Photo --> Review[Review photos and select which to keep]
+    Review --> Save[Save title, link, and all selected photos together]
     Save --> Notebook[Find it later by title]
 ```
 
@@ -67,20 +68,26 @@ flowchart TD
 3. Paste a problem link, share a page from your browser to Breadcrumb, or scan a question using **Scan** or **Screenshot**.
 4. If automatic lookup is configured, check the suggested problem and tap **Use this problem**. Otherwise use one of the two Google search buttons and return with a source link.
 5. Check the suggested title and edit it if needed. Select a **Site** from the dropdown. The URL suggests a category until you choose one yourself. LeetCode and GeeksforGeeks title suggestions come from the URL or search result. A pasted Codeforces URL suggests the contest number and problem letter, which you can replace with the problem name.
-6. Take or import a photo of your solution and tap **Save solution**.
-7. Search the notebook with any words from the title. Word order and letter case are ignored. Open an entry, tap its photo to enlarge it, and pinch to zoom. **Open question** opens the original URL.
+6. Take photos of each page or use **Add photos** to select several from the gallery. Each capture or import appends photos to this solution. Tap **Review and save**, uncheck any photos you want to exclude, and save the selected photos together. Keep at least one photo.
+7. Search the notebook with any words from the title. Word order and letter case are ignored. Open an entry and swipe between its photos. Tap a photo to enlarge it, pinch to zoom, and use the arrows to move between enlarged photos. **Open question** opens the original URL.
 
 Leaving the add screen preserves your draft. The notebook's add button becomes **Continue draft** until the entry is saved.
 
 The **Site** dropdown includes LeetCode, Codeforces, GeeksforGeeks, CodeChef, AtCoder, HackerRank, and Other sites. Filter the notebook using **All sites**, or change an existing entry's category in its solution screen. Older entries get their category from the source URL until you select a category yourself.
 
-To delete an entry, open its solution, tap the trash icon in the top-right corner, and confirm **Delete**. This removes the entry's folder and its files from the phone and updates the progress figures. Deletion cannot be undone in the app.
+Long-press a solution card on the Notebook screen to open **Edit** and **Delete**. These actions are also available in the top-right corner of the solution screen. To delete an entry, tap the trash icon or the Delete menu item and confirm **Delete**. This removes the entry's folder and its files from the phone and updates the progress figures. Deletion cannot be undone in the app.
 
 The welcome screen's **See GitHub & star** action opens the repository so you can view or star it on GitHub. You can view the tutorial again from Settings.
 
+### Editing and URL cleanup
+
+Choose **Edit** to change a saved entry's title, problem link, site, or photos. Remove photos from the editor or uncheck them in the final review. New gallery selections and camera captures append to the same solution. The existing saved entry is updated after you confirm the review. If another unfinished draft exists, the app asks before replacing it.
+
+**Clean URL** simplifies supported problem links, removes common tracking parameters and fragments, and preserves functional query parameters on unfamiliar sites. For example, `https://leetcode.com/problems/two-sum/description/?envId=list` becomes `https://leetcode.com/problems/two-sum/`. URL cleanup runs on the phone.
+
 ### Install or update from GitHub Mobile
 
-Open this repository's [v0.2.0 release](https://github.com/krish007code/Breadcrumb/releases/tag/v0.2.0), expand **Assets**, and download `Breadcrumb-0.2.0.apk`. Open it using Android's Files app and allow installation from that source when prompted. Install over the existing Breadcrumb app to retain its setup and notebook folder selection.
+Open this repository's [v0.3.0 release](https://github.com/krish007code/Breadcrumb/releases/tag/v0.3.0), expand **Assets**, and download `Breadcrumb-0.3.0.apk`. Open it using Android's Files app and allow installation from that source when prompted. Install over the existing Breadcrumb app to retain its setup and notebook folder selection.
 
 Release downloads are available to the owner and invited collaborators while the repository is private.
 
@@ -127,14 +134,19 @@ Breadcrumb/
     source.txt
     site.txt
     entry.json
-    solution.jpg
+    solution-<id>.jpg
+    solution-<another-id>.png
 ```
 
-`source.txt` contains the title and original URL. `entry.json` contains the same metadata, a stable entry ID, the photo filename, the save timestamp, and format version 1. Imported PNG, WebP, and HEIC photos retain their respective extensions.
+`source.txt` contains the title and original URL. Current format version 2 metadata records the entry ID, title, link, site, ordered photo filenames, original save date, and revision number. Newly created entries use `entry.json`. After an edit, the active metadata is stored in a `revision-<number>-<id>.json` file in the same folder.
 
-`site.txt` contains the selected site category. It is optional for older entries, which are categorised from their URLs. Changing the category leaves the original problem URL intact.
+Edits copy any new photos before committing a complete metadata revision, then clean up superseded metadata and removed photos. The app reads the most recent complete revision and preserves the original entry ID and activity date. Readable `source.txt` and `site.txt` summaries are refreshed after the metadata commit.
 
-The short suffix keeps identically named entries separate. The app copies the solution photo before writing entry metadata and cleans up a failed save. The notebook is reconstructed by reading these folders.
+Older version 1 metadata containing a single `photo` remains supported. Its optional `site.txt` category is retained when the entry is edited into the new format. Imported PNG, WebP, and HEIC photos retain their respective extensions.
+
+Multiple-photo entries require Breadcrumb 0.3.0 or later.
+
+The short folder suffix keeps identically named entries separate. Editing retains the existing folder. The notebook is reconstructed by reading these folders.
 
 Copy the **entire notebook folder** to your hard disk for backup. To restore, copy it to the phone and select it in Settings. Files in this user-selected folder survive app uninstall. An unfinished draft is stored in the app's private storage and is removed by uninstalling the app.
 
@@ -175,6 +187,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Verification status
 
-The 0.2.0 debug APK builds successfully. All 16 JVM unit tests pass, including category compatibility checks for existing notebook entries. Android lint completes with zero errors and 19 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions.
+The 0.3.0 debug APK builds successfully. All 24 JVM unit tests pass, including legacy single-photo metadata, multiple-photo ordering, edit identity/date preservation, and URL-cleaning checks. Android lint completes with zero errors and 21 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions.
 
 Physical-device checks for camera capture, document-provider behaviour, browser sharing, and Google Lens handoff are pending. Live TinyFish lookup requires a user-provided key and has not been exercised against a live account.
