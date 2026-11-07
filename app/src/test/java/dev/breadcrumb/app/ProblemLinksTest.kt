@@ -1,0 +1,56 @@
+package dev.breadcrumb.app
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class ProblemLinksTest {
+    @Test fun leetcodeLinksLoseTrackingAndSolutionSuffixes() {
+        assertEquals("https://leetcode.com/problems/two-sum/",
+            ProblemLinks.normalize(" https://leetcode.com/problems/two-sum/solutions/123?envId=list#comments "))
+    }
+
+    @Test fun linksWithoutSchemeAndGfgProblemNumbersAreSupported() {
+        assertEquals("https://leetcode.com/problems/two-sum/", ProblemLinks.normalize("leetcode.com/problems/two-sum"))
+        assertTrue(ProblemLinks.isSupportedProblem("https://www.geeksforgeeks.org/problems/array-subset-of-another-array2317/1"))
+        assertEquals("Array Subset Of Another Array2317",
+            ProblemLinks.suggestedTitle("https://www.geeksforgeeks.org/problems/array-subset-of-another-array2317/1"))
+    }
+
+    @Test fun titlesComeFromProblemSlugRatherThanDescriptionPage() {
+        assertEquals("Add Two Numbers", ProblemLinks.suggestedTitle("https://leetcode.com/problems/add-two-numbers/description/"))
+        assertEquals("Some Problem", ProblemLinks.suggestedTitle("https://example.com/some-problem.html"))
+        assertEquals("Two Sum", ProblemLinks.cleanTitle("Two Sum - LeetCode"))
+    }
+
+    @Test fun lookupFiltersOutSimilarDomainsAndNonProblemPages() {
+        assertFalse(ProblemLinks.isSupportedProblem("https://leetcode.com.evil.example/problems/two-sum"))
+        assertFalse(ProblemLinks.isSupportedProblem("https://leetcode.com/discuss/interview-question/123"))
+        assertFalse(ProblemLinks.isSupportedProblem("https://geeksforgeeks.org/"))
+    }
+
+    @Test fun invalidAndNonWebLinksAreRejected() {
+        listOf("", "javascript://example.com/a", "file:///a.jpg", "hello world", "https://user:password@example.com/a").forEach { value ->
+            assertTrue("Expected rejection for $value", runCatching { ProblemLinks.normalize(value) }.isFailure)
+        }
+    }
+
+    @Test fun titleSearchAcceptsUnorderedWordsAndPunctuation() {
+        assertTrue(ProblemLinks.matches("Two Sum II — Input Array Is Sorted", "sorted two"))
+        assertTrue(ProblemLinks.matches("Two-Sum", "two sum"))
+        assertTrue(ProblemLinks.matches("Café", "cafe"))
+        assertTrue(ProblemLinks.matches("Two Sum", ""))
+        assertFalse(ProblemLinks.matches("Two Sum", "two hash"))
+    }
+
+    @Test fun scanPrefersNumberedTitleAndKeepsFallbackShort() {
+        assertEquals("1. Two Sum", ProblemLinks.scanQuery("Description\n1. Two Sum\nGiven an array of integers nums"))
+        assertEquals("Given an array of integers nums", ProblemLinks.scanQuery("Description\nGiven an array of integers nums\nEasy\nSubmissions"))
+        assertTrue(ProblemLinks.scanQuery("some words ".repeat(100)).length <= 240)
+    }
+
+    @Test fun shareTextCanIncludeSurroundingWords() {
+        assertEquals("https://leetcode.com/problems/two-sum/",
+            ProblemLinks.extractSharedLink("Check this problem https://leetcode.com/problems/two-sum/."))
+        assertNull(ProblemLinks.extractSharedLink("Just a title"))
+    }
+}
