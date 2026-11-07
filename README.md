@@ -4,8 +4,7 @@ An Android notebook for coding problems and handwritten solutions. Save a proble
 
 The interface takes visual direction from [Tally](https://composables.com/apps/tally), including cream backgrounds, rounded white panels, dark buttons, and small colour accents. Breadcrumb's UI components are independently implemented.
 
-[Download the Android APK from GitHub Releases](https://github.com/krish007code/Breadcrumb/releases/tag/v0.3.0). This repository is private. Sign in with the owner account or an invited collaborator account to access the release.
-
+[Download the Android APK from GitHub Releases](https://github.com/krish007code/Breadcrumb/releases/tag/v0.3.0).
 ## Use case
 
 You solve a LeetCode, Codeforces, or GeeksforGeeks problem on paper. Instead of retyping your explanation or losing the page, take a solution photo and connect it to the problem link. Your saved work stays in an ordinary folder on your phone, which you can copy to a hard disk.
