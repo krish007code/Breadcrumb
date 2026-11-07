@@ -58,7 +58,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 
 @Composable
-fun BreadcrumbApp(vm: NotebookViewModel) {
+fun BreadcrumbApp(vm: NotebookViewModel, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -130,6 +130,7 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
     }
 
     Scaffold(
+        modifier = modifier,
         containerColor = Paper,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
@@ -238,57 +239,68 @@ internal fun Header(title: String, back: (() -> Unit)? = null, action: (@Composa
 
 @Composable
 private fun NotebookScreen(vm: NotebookViewModel, chooseFolder: () -> Unit, settings: () -> Unit, edit: (NotebookEntry) -> Unit) {
-    var filter by rememberSaveable { mutableStateOf("") }
-    var siteFilter by rememberSaveable { mutableStateOf<String?>(null) }
-    var siteMenu by remember { mutableStateOf(false) }
-    var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
-    vm.entries.firstOrNull { it.id == deleteId }?.let { entry ->
-        DeleteSolutionDialog(entry, { deleteId = null; vm.deleteEntry(entry) }, { deleteId = null })
-    }
-    Header("Breadcrumb", action = {
-        IconButton(onClick = settings) { Icon(Icons.Outlined.Settings, "Settings") }
-    })
-    OutlinedTextField(
-        value = filter, onValueChange = { filter = it }, placeholder = { Text("Search problem titles") },
-        leadingIcon = { Icon(Icons.Outlined.Search, null) },
-        trailingIcon = { if (filter.isNotEmpty()) IconButton(onClick = { filter = "" }) { Icon(Icons.Outlined.Close, "Clear search") } },
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(20.dp), singleLine = true,
-        colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, unfocusedBorderColor = Border),
-    )
-    Box(Modifier.padding(horizontal = 24.dp)) {
-        TextButton(onClick = { siteMenu = true }) {
-            Text(ProblemSite.entries.firstOrNull { it.name == siteFilter }?.label ?: "All sites")
-            Icon(Icons.Outlined.ExpandMore, null)
+    Column(Modifier.fillMaxSize()) {
+        var filter by rememberSaveable { mutableStateOf("") }
+        var siteFilter by rememberSaveable { mutableStateOf<String?>(null) }
+        var siteMenu by remember { mutableStateOf(false) }
+        var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
+        vm.entries.firstOrNull { it.id == deleteId }?.let { entry ->
+            DeleteSolutionDialog(entry, { deleteId = null; vm.deleteEntry(entry) }, { deleteId = null })
         }
-        DropdownMenu(expanded = siteMenu, onDismissRequest = { siteMenu = false }) {
-            DropdownMenuItem(text = { Text("All sites") }, onClick = { siteFilter = null; siteMenu = false })
-            ProblemSite.entries.forEach { site ->
-                DropdownMenuItem(text = { Text(site.label) }, onClick = { siteFilter = site.name; siteMenu = false })
+        Header("Breadcrumb", action = {
+            IconButton(onClick = settings) { Icon(Icons.Outlined.Settings, "Settings") }
+        })
+        OutlinedTextField(
+            value = filter, onValueChange = { filter = it }, placeholder = { Text("Search problem titles") },
+            leadingIcon = { Icon(Icons.Outlined.Search, null) },
+            trailingIcon = { if (filter.isNotEmpty()) IconButton(onClick = { filter = "" }) { Icon(Icons.Outlined.Close, "Clear search") } },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(20.dp), singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedContainerColor = Color.White, unfocusedBorderColor = Border,
+            ),
+        )
+        Box(Modifier.padding(horizontal = 24.dp)) {
+            TextButton(onClick = { siteMenu = true }) {
+                Text(ProblemSite.entries.firstOrNull { it.name == siteFilter }?.label ?: "All sites")
+                Icon(Icons.Outlined.ExpandMore, null)
+            }
+            DropdownMenu(expanded = siteMenu, onDismissRequest = { siteMenu = false }) {
+                DropdownMenuItem(text = { Text("All sites") }, onClick = { siteFilter = null; siteMenu = false })
+                ProblemSite.entries.forEach { site ->
+                    DropdownMenuItem(
+                        text = { Text(site.label) }, onClick = { siteFilter = site.name; siteMenu = false },
+                    )
+                }
             }
         }
-    }
-    when {
-        vm.notebookUri == null -> EmptyPanel(Icons.Outlined.FolderOpen, "A place for your solutions",
-            "Choose a folder on your phone. Breadcrumb will keep each problem link and your handwritten solution together there.",
-            "Choose notebook folder", chooseFolder)
-        vm.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Ink) }
-        vm.folderError != null -> EmptyPanel(Icons.Outlined.FolderOpen, "Open your notebook again",
-            vm.folderError.orEmpty(), "Choose folder", chooseFolder)
-        vm.entries.isEmpty() -> EmptyPanel(Icons.Outlined.EditNote, "Your first breadcrumb",
-            "Add a problem link and a photo of your solution. Come back whenever you want to revise it.", "Add a solution", { vm.navigate("add") })
-        else -> {
-            val visible = vm.entries.filter { ProblemLinks.matches(it.title, filter) && (siteFilter == null || it.site.name == siteFilter) }
-            Row(Modifier.fillMaxWidth().padding(start = 26.dp, end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${visible.size} ${if (visible.size == 1) "solution" else "solutions"}", Modifier.weight(1f), color = Muted)
-                IconButton(onClick = vm::refresh) { Icon(Icons.Outlined.Refresh, "Refresh notebook") }
-            }
-            if (visible.isEmpty()) {
-                EmptyPanel(Icons.Outlined.Search, "No matching titles", "Try a different word from the problem title.")
-            } else LazyColumn(contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 104.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(visible, key = NotebookEntry::id) { entry ->
-                    SolutionRow(entry, onEdit = { edit(entry) }, onDelete = { deleteId = entry.id }) { vm.open(entry) }
+        when {
+            vm.notebookUri == null -> EmptyPanel(Icons.Outlined.FolderOpen, "A place for your solutions",
+                "Choose a folder on your phone. Breadcrumb will keep each problem link and your handwritten solution together there.",
+                "Choose notebook folder", chooseFolder)
+            vm.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Ink) }
+            vm.folderError != null -> EmptyPanel(Icons.Outlined.FolderOpen, "Open your notebook again",
+                vm.folderError.orEmpty(), "Choose folder", chooseFolder)
+            vm.entries.isEmpty() -> EmptyPanel(Icons.Outlined.EditNote, "Your first breadcrumb",
+                "Add a problem link and a photo of your solution. Come back whenever you want to revise it.", "Add a solution", { vm.navigate("add") })
+            else -> {
+                val visible = vm.entries.filter { ProblemLinks.matches(it.title, filter) && (siteFilter == null || it.site.name == siteFilter) }
+                Row(Modifier.fillMaxWidth().padding(start = 26.dp, end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${visible.size} ${if (visible.size == 1) "solution" else "solutions"}", Modifier.weight(1f), color = Muted)
+                    IconButton(onClick = vm::refresh) { Icon(Icons.Outlined.Refresh, "Refresh notebook") }
+                }
+                if (visible.isEmpty()) {
+                    EmptyPanel(
+                        Icons.Outlined.Search, "No matching titles", "Try a different word from the problem title.",
+                    )
+                } else LazyColumn(
+                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 104.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(visible, key = NotebookEntry::id) { entry ->
+                        SolutionRow(entry, onEdit = { edit(entry) }, onDelete = { deleteId = entry.id }) {
+                            vm.open(entry)
+                        }
+                    }
                 }
             }
         }
@@ -313,90 +325,94 @@ private fun AddScreen(
     solutionCamera: () -> Unit, solutionImport: () -> Unit,
     chooseFolder: () -> Unit, googleText: () -> Unit, googleImage: () -> Unit, openLink: (String) -> Unit,
 ) {
-    val clipboard = LocalClipboardManager.current
-    val enabled = !vm.saving && !vm.reading
-    var review by rememberSaveable { mutableStateOf(false) }
-    if (review) PhotoReviewDialog(vm.solutionUris, confirm = { photos -> review = false; vm.save(photos) }, dismiss = { review = false })
-    Header(if (vm.editingId == null) "New solution" else "Edit solution", back = { if (!vm.saving) back() }, action = {
-        IconButton(onClick = settings, enabled = !vm.saving) { Icon(Icons.Outlined.Settings, "Settings") }
-    })
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Panel {
-            Text("Find the problem", style = MaterialTheme.typography.titleMedium)
-            Text("Scan a screen or paste its link below.", color = Muted, style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ActionButton("Scan", Icons.Outlined.PhotoCamera, scanCamera, modifier = Modifier.weight(1f), enabled = enabled)
-                ActionButton("Screenshot", Icons.Outlined.Image, scanImport, modifier = Modifier.weight(1f), enabled = enabled)
-            }
-            if (vm.scanUri == null) {
-                TextButton(onClick = googleText, enabled = enabled) { Text("Search Google manually") }
-            }
-            vm.scanUri?.let { scan ->
-                AsyncImage(scan, "Captured question", Modifier.fillMaxWidth().height(154.dp).clip(RoundedCornerShape(14.dp)).background(Sand), contentScale = ContentScale.Fit)
-                if (vm.reading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                OutlinedTextField(vm.query, vm::updateQuery, Modifier.fillMaxWidth(), label = { Text("Words from your scan") },
-                    minLines = 2, maxLines = 4, enabled = enabled, shape = RoundedCornerShape(16.dp))
-                ActionButton("Search Google with text", Icons.Outlined.Search, googleText, enabled = enabled)
-                ActionButton("Search with this photo", Icons.Outlined.ImageSearch, googleImage, enabled = enabled)
-                if (vm.hasSearchKey) TextButton(onClick = vm::findMatches, enabled = enabled && !vm.searching && vm.query.isNotBlank()) {
-                    Text(if (vm.searching) "Finding matches…" else "Find matching problem")
+    Column(Modifier.fillMaxSize()) {
+        val clipboard = LocalClipboardManager.current
+        val enabled = !vm.saving && !vm.reading
+        var review by rememberSaveable { mutableStateOf(false) }
+        if (review) PhotoReviewDialog(vm.solutionUris, confirm = { photos -> review = false; vm.save(photos) }, dismiss = { review = false })
+        Header(if (vm.editingId == null) "New solution" else "Edit solution",
+            back = { if (!vm.saving) back() }, action = {
+            IconButton(onClick = settings, enabled = !vm.saving) { Icon(Icons.Outlined.Settings, "Settings") }
+        })
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Panel {
+                Text("Find the problem", style = MaterialTheme.typography.titleMedium)
+                Text("Scan a screen or paste its link below.",
+                    color = Muted, style = MaterialTheme.typography.bodyMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ActionButton("Scan", Icons.Outlined.PhotoCamera, scanCamera, modifier = Modifier.weight(1f), enabled = enabled)
+                    ActionButton("Screenshot", Icons.Outlined.Image, scanImport, modifier = Modifier.weight(1f), enabled = enabled)
                 }
-            }
-            if (vm.status.isNotBlank()) Text(vm.status, color = Muted, style = MaterialTheme.typography.bodyMedium)
-            if (vm.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
-            vm.matches.forEach { match ->
-                Surface(shape = RoundedCornerShape(16.dp), color = Sand) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(match.title, style = MaterialTheme.typography.titleMedium)
-                        Text(match.url, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { vm.select(match) }) { Text("Use this problem") }
-                            IconButton(onClick = { openLink(match.url) }) { Icon(Icons.AutoMirrored.Outlined.OpenInNew, "Check problem in browser") }
+                if (vm.scanUri == null) {
+                    TextButton(onClick = googleText, enabled = enabled) { Text("Search Google manually") }
+                }
+                vm.scanUri?.let { scan ->
+                    AsyncImage(scan, "Captured question", Modifier.fillMaxWidth().height(154.dp).clip(RoundedCornerShape(14.dp)).background(Sand), contentScale = ContentScale.Fit)
+                    if (vm.reading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    OutlinedTextField(vm.query, vm::updateQuery, Modifier.fillMaxWidth(), label = { Text("Words from your scan") },
+                        minLines = 2, maxLines = 4, enabled = enabled, shape = RoundedCornerShape(16.dp))
+                    ActionButton("Search Google with text", Icons.Outlined.Search, googleText, enabled = enabled)
+                    ActionButton("Search with this photo", Icons.Outlined.ImageSearch, googleImage, enabled = enabled)
+                    if (vm.hasSearchKey) TextButton(onClick = vm::findMatches, enabled = enabled && !vm.searching && vm.query.isNotBlank()) {
+                        Text(if (vm.searching) "Finding matches…" else "Find matching problem")
+                    }
+                }
+                if (vm.status.isNotBlank()) Text(vm.status, color = Muted, style = MaterialTheme.typography.bodyMedium)
+                if (vm.searching) LinearProgressIndicator(Modifier.fillMaxWidth())
+                vm.matches.forEach { match ->
+                    Surface(shape = RoundedCornerShape(16.dp), color = Sand) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(match.title, style = MaterialTheme.typography.titleMedium)
+                            Text(match.url, style = MaterialTheme.typography.bodyMedium, color = Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { vm.select(match) }) { Text("Use this problem") }
+                                IconButton(onClick = { openLink(match.url) }) { Icon(Icons.AutoMirrored.Outlined.OpenInNew, "Check problem in browser") }
+                            }
                         }
                     }
                 }
             }
-        }
-        Panel {
-            OutlinedTextField(vm.url, vm::updateUrl, Modifier.fillMaxWidth(), label = { Text("Problem link") },
-                placeholder = { Text("https://leetcode.com/problems/…") },
-                trailingIcon = { IconButton(enabled = enabled, onClick = {
-                    val text = clipboard.getText()?.text.orEmpty()
-                    vm.updateUrl(ProblemLinks.extractSharedLink(text) ?: text)
-                }) { Icon(Icons.Outlined.ContentPaste, "Paste problem link") } },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), enabled = !vm.saving,
-                shape = RoundedCornerShape(16.dp), minLines = 1, maxLines = 3)
-            TextButton(onClick = vm::cleanUrl, enabled = enabled && vm.url.isNotBlank()) {
-                Icon(Icons.Outlined.Link, null, Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Clean URL")
+            Panel {
+                OutlinedTextField(vm.url, vm::updateUrl, Modifier.fillMaxWidth(), label = { Text("Problem link") },
+                    placeholder = { Text("https://leetcode.com/problems/…") },
+                    trailingIcon = { IconButton(enabled = enabled, onClick = {
+                        val text = clipboard.getText()?.text.orEmpty()
+                        vm.updateUrl(ProblemLinks.extractSharedLink(text) ?: text)
+                    }) { Icon(Icons.Outlined.ContentPaste, "Paste problem link") } },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), enabled = !vm.saving,
+                    shape = RoundedCornerShape(16.dp), minLines = 1, maxLines = 3)
+                TextButton(onClick = vm::cleanUrl, enabled = enabled && vm.url.isNotBlank()) {
+                    Icon(Icons.Outlined.Link, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Clean URL")
+                }
+                OutlinedTextField(vm.title, vm::updateTitle, Modifier.fillMaxWidth(), label = { Text("Problem title") },
+                    enabled = !vm.saving, shape = RoundedCornerShape(16.dp), maxLines = 3)
+                SiteDropdown(vm.site, vm::updateSite, enabled = !vm.saving)
             }
-            OutlinedTextField(vm.title, vm::updateTitle, Modifier.fillMaxWidth(), label = { Text("Problem title") },
-                enabled = !vm.saving, shape = RoundedCornerShape(16.dp), maxLines = 3)
-            SiteDropdown(vm.site, vm::updateSite, enabled = !vm.saving)
-        }
-        Panel {
-            Text("Solution photos (${vm.solutionUris.size})", style = MaterialTheme.typography.titleMedium)
-            if (vm.solutionUris.isNotEmpty()) {
-                Text("Add more pages or remove photos before saving.", color = Muted, style = MaterialTheme.typography.bodyMedium)
-                vm.solutionUris.forEachIndexed { index, photo ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(photo, "Solution photo ${index + 1}", Modifier.weight(1f).height(150.dp).clip(RoundedCornerShape(16.dp)).background(Sand), contentScale = ContentScale.Fit)
-                        IconButton(onClick = { vm.removePhoto(photo) }, enabled = enabled) { Icon(Icons.Outlined.Close, "Remove photo ${index + 1}") }
+            Panel {
+                Text("Solution photos (${vm.solutionUris.size})", style = MaterialTheme.typography.titleMedium)
+                if (vm.solutionUris.isNotEmpty()) {
+                    Text("Add more pages or remove photos before saving.", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                    vm.solutionUris.forEachIndexed { index, photo ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            AsyncImage(photo, "Solution photo ${index + 1}", Modifier.weight(1f).height(150.dp).clip(RoundedCornerShape(16.dp)).background(Sand), contentScale = ContentScale.Fit)
+                            IconButton(onClick = { vm.removePhoto(photo) }, enabled = enabled) { Icon(Icons.Outlined.Close, "Remove photo ${index + 1}") }
+                        }
                     }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ActionButton("Take photo", Icons.Outlined.PhotoCamera, solutionCamera, modifier = Modifier.weight(1f), enabled = enabled)
+                    ActionButton("Add photos", Icons.Outlined.Image, solutionImport, modifier = Modifier.weight(1f), enabled = enabled)
+                }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ActionButton("Take photo", Icons.Outlined.PhotoCamera, solutionCamera, modifier = Modifier.weight(1f), enabled = enabled)
-                ActionButton("Add photos", Icons.Outlined.Image, solutionImport, modifier = Modifier.weight(1f), enabled = enabled)
+            if (vm.notebookUri == null) ActionButton("Choose notebook folder", Icons.Outlined.FolderOpen, chooseFolder, enabled = enabled)
+            Button(onClick = { review = true }, enabled = enabled && !vm.loading && vm.title.isNotBlank() && vm.url.isNotBlank() && vm.solutionUris.isNotEmpty() && vm.notebookUri != null,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(28.dp)) {
+                if (vm.saving) { CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)) }
+                Text(if (vm.saving) "Saving solution…" else "Review and save")
             }
-        }
-        if (vm.notebookUri == null) ActionButton("Choose notebook folder", Icons.Outlined.FolderOpen, chooseFolder, enabled = enabled)
-        Button(onClick = { review = true }, enabled = enabled && !vm.loading && vm.title.isNotBlank() && vm.url.isNotBlank() && vm.solutionUris.isNotEmpty() && vm.notebookUri != null,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(28.dp)) {
-            if (vm.saving) { CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)) }
-            Text(if (vm.saving) "Saving solution…" else "Review and save")
         }
     }
 }
@@ -447,37 +463,41 @@ private fun ActionButton(text: String, icon: ImageVector, action: () -> Unit, mo
 
 @Composable
 private fun SolutionScreen(vm: NotebookViewModel, back: () -> Unit, openLink: (String) -> Unit, edit: (NotebookEntry) -> Unit) {
-    var fullscreen by rememberSaveable { mutableIntStateOf(-1) }
-    var confirmDelete by rememberSaveable { mutableStateOf(false) }
-    Header("Your solution", back = { if (!vm.saving) back() }, action = {
-        IconButton(onClick = { vm.selectedEntry?.let(edit) }, enabled = !vm.saving && vm.selectedEntry != null) {
-            Icon(Icons.Outlined.Edit, "Edit solution")
-        }
-        IconButton(onClick = { confirmDelete = true }, enabled = !vm.saving && vm.selectedEntry != null) {
-            Icon(Icons.Outlined.DeleteOutline, "Delete solution")
-        }
-    })
-    val entry = vm.selectedEntry
-    if (entry == null) {
-        if (vm.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        else EmptyPanel(Icons.Outlined.FolderOpen, "Solution unavailable", "Refresh the notebook or choose its folder again.", "Back to notebook", back)
-        return
-    }
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(entry.title, style = MaterialTheme.typography.headlineMedium)
-        SiteDropdown(entry.site, { vm.changeEntrySite(entry, it) }, enabled = !vm.saving)
-        ActionButton("Open question", Icons.AutoMirrored.Outlined.OpenInNew, { openLink(entry.url) })
-        val pager = rememberPagerState(pageCount = { entry.photoUris.size })
-        Text("Photo ${pager.currentPage + 1} of ${entry.photoUris.size}", color = Muted, style = MaterialTheme.typography.bodyMedium)
-        Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White)) {
-            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { index ->
-                AsyncImage(entry.photoUris[index], "Solution photo ${index + 1}. Tap to enlarge.", Modifier.fillMaxSize().clickable { fullscreen = index }, contentScale = ContentScale.Fit)
+    Column(Modifier.fillMaxSize()) {
+        var fullscreen by rememberSaveable { mutableIntStateOf(-1) }
+        var confirmDelete by rememberSaveable { mutableStateOf(false) }
+        Header("Your solution", back = { if (!vm.saving) back() }, action = {
+            IconButton(onClick = { vm.selectedEntry?.let(edit) }, enabled = !vm.saving && vm.selectedEntry != null) {
+                Icon(Icons.Outlined.Edit, "Edit solution")
             }
-            Icon(Icons.Outlined.ZoomIn, "Enlarge solution", Modifier.align(Alignment.BottomEnd).padding(16.dp).background(Paper, CircleShape).padding(10.dp))
+            IconButton(onClick = { confirmDelete = true }, enabled = !vm.saving && vm.selectedEntry != null) {
+                Icon(Icons.Outlined.DeleteOutline, "Delete solution")
+            }
+        })
+        val entry = vm.selectedEntry
+        if (entry == null) {
+            if (vm.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            else EmptyPanel(Icons.Outlined.FolderOpen, "Solution unavailable", "Refresh the notebook or choose its folder again.", "Back to notebook", back)
+            return@Column
         }
+        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(entry.title, style = MaterialTheme.typography.headlineMedium)
+            SiteDropdown(entry.site, { vm.changeEntrySite(entry, it) }, enabled = !vm.saving)
+            ActionButton("Open question", Icons.AutoMirrored.Outlined.OpenInNew, { openLink(entry.url) })
+            val pager = rememberPagerState(pageCount = { entry.photoUris.size })
+            Text("Photo ${pager.currentPage + 1} of ${entry.photoUris.size}", color = Muted, style = MaterialTheme.typography.bodyMedium)
+            Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White)) {
+                HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { index ->
+                    AsyncImage(entry.photoUris[index], "Solution photo ${index + 1}. Tap to enlarge.", Modifier.fillMaxSize().clickable { fullscreen = index }, contentScale = ContentScale.Fit)
+                }
+                Icon(Icons.Outlined.ZoomIn, "Enlarge solution", Modifier.align(Alignment.BottomEnd).padding(16.dp).background(Paper, CircleShape).padding(10.dp))
+            }
+        }
+        if (confirmDelete) DeleteSolutionDialog(entry, { confirmDelete = false; vm.deleteEntry(entry) }, { confirmDelete = false })
+        if (fullscreen >= 0) PhotoViewer(entry.photoUris, fullscreen.coerceAtMost(entry.photoUris.lastIndex)) { fullscreen = -1 }
     }
-    if (confirmDelete) DeleteSolutionDialog(entry, { confirmDelete = false; vm.deleteEntry(entry) }, { confirmDelete = false })
-    if (fullscreen >= 0) PhotoViewer(entry.photoUris, fullscreen.coerceAtMost(entry.photoUris.lastIndex)) { fullscreen = -1 }
 }
 
 @Composable
@@ -548,27 +568,30 @@ private fun PhotoReviewDialog(photos: List<Uri>, confirm: (List<Uri>) -> Unit, d
 
 @Composable
 private fun SettingsScreen(vm: NotebookViewModel, back: () -> Unit, chooseFolder: () -> Unit) {
-    var key by remember { mutableStateOf("") }
-    Header("Settings", back)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Panel {
-            Text("Notebook folder", style = MaterialTheme.typography.titleMedium)
-            Text(if (vm.notebookUri == null) "Choose where to keep your solutions." else vm.notebookName, color = Muted)
-            Text("Copy this entire folder to your hard disk whenever you want a backup. Choose the same folder to reopen your notebook after reinstalling.", style = MaterialTheme.typography.bodyMedium, color = Muted)
-            ActionButton(if (vm.notebookUri == null) "Choose folder" else "Change or reopen folder", Icons.Outlined.FolderOpen, chooseFolder, enabled = !vm.saving && !vm.loading)
+    Column(Modifier.fillMaxSize()) {
+        var key by remember { mutableStateOf("") }
+        Header("Settings", back)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Panel {
+                Text("Notebook folder", style = MaterialTheme.typography.titleMedium)
+                Text(if (vm.notebookUri == null) "Choose where to keep your solutions." else vm.notebookName,
+                    color = Muted)
+                Text("Copy this entire folder to your hard disk whenever you want a backup. Choose the same folder to reopen your notebook after reinstalling.", style = MaterialTheme.typography.bodyMedium, color = Muted)
+                ActionButton(if (vm.notebookUri == null) "Choose folder" else "Change or reopen folder", Icons.Outlined.FolderOpen, chooseFolder, enabled = !vm.saving && !vm.loading)
+            }
+            Panel {
+                Text("Automatic scan lookup", style = MaterialTheme.typography.titleMedium)
+                Text("Add your TinyFish Search API key to get problem-link suggestions after scanning. Recognized words are sent to TinyFish. Google search and pasting links work without a key.", style = MaterialTheme.typography.bodyMedium, color = Muted)
+                if (vm.hasSearchKey) Text("A search key is saved on this phone.", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(key, { key = it }, Modifier.fillMaxWidth(), label = { Text(if (vm.hasSearchKey) "Replace API key" else "TinyFish API key") },
+                    singleLine = true, visualTransformation = PasswordVisualTransformation(), shape = RoundedCornerShape(16.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
+                Button(onClick = { vm.saveSearchKey(key); key = "" }, enabled = key.isNotBlank()) { Text("Save key") }
+                if (vm.hasSearchKey) TextButton(onClick = { vm.saveSearchKey("") }) { Text("Remove key") }
+            }
+            TextButton(onClick = vm::showTutorial) { Text("View welcome tutorial") }
         }
-        Panel {
-            Text("Automatic scan lookup", style = MaterialTheme.typography.titleMedium)
-            Text("Add your TinyFish Search API key to get problem-link suggestions after scanning. Recognized words are sent to TinyFish. Google search and pasting links work without a key.", style = MaterialTheme.typography.bodyMedium, color = Muted)
-            if (vm.hasSearchKey) Text("A search key is saved on this phone.", style = MaterialTheme.typography.bodyMedium)
-            OutlinedTextField(key, { key = it }, Modifier.fillMaxWidth(), label = { Text(if (vm.hasSearchKey) "Replace API key" else "TinyFish API key") },
-                singleLine = true, visualTransformation = PasswordVisualTransformation(), shape = RoundedCornerShape(16.dp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
-            Button(onClick = { vm.saveSearchKey(key); key = "" }, enabled = key.isNotBlank()) { Text("Save key") }
-            if (vm.hasSearchKey) TextButton(onClick = { vm.saveSearchKey("") }) { Text("Remove key") }
-        }
-        TextButton(onClick = vm::showTutorial) { Text("View welcome tutorial") }
     }
 }
 

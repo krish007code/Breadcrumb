@@ -2,6 +2,7 @@ package dev.breadcrumb.app
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -170,8 +171,9 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
                 if (listing.unreadableCount > 0) {
                     message = "${listing.unreadableCount} saved entries couldn't be read. Their files are still in your notebook folder."
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
                 if (generation != loadGeneration) return@launch
                 entries = emptyList()
                 folderError = error.message ?: "Unable to open your notebook. Choose its folder again."
@@ -195,8 +197,9 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
             try {
                 val updated = withContext(NonCancellable) { store.changeSite(tree, entry, value) }
                 entries = entries.map { if (it.id == entry.id) updated else it }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
                 report(error.message ?: "Unable to save this category.")
             } finally { saving = false }
         }
@@ -219,8 +222,9 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
                     saved["page"] = page
                 }
                 report("Solution deleted.")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
                 report(error.message ?: "Unable to delete this solution.")
             } finally { saving = false; refresh() }
         }
@@ -286,8 +290,9 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
                     } catch (error: Exception) { target.delete(); throw error }
                   }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
                 report(error.message ?: "Unable to import this photo.")
             } finally {
                 reading = false
@@ -331,8 +336,10 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
                 status = if (query.isBlank()) "Couldn't read this photo. Try Google Lens with the same image, or paste a link."
                     else "Scan read. Check the search words or try Google Lens."
                 if (query.isNotBlank() && hasSearchKey) findMatches()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
+                Log.w("Breadcrumb", "Unable to read the question scan.", error)
                 status = "Couldn't read this photo. Try Google Lens with the same image, or paste a link."
             } finally { recognizer.close(); reading = false }
         }
@@ -358,8 +365,9 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
                     status = if (found.isEmpty()) "Couldn't find a matching problem. Try Google or paste its link."
                         else "Choose the correct problem below."
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
                 if (generation == searchGeneration) status = error.message ?: "Search failed. Try Google or paste a link."
             } finally { if (generation == searchGeneration) searching = false }
         }
@@ -398,8 +406,9 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
                 page = if (original == null) "notebook" else "detail"
                 saved["page"] = page
                 report(if (original == null) "Solution saved." else "Solution updated.")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                if (error is CancellationException) throw error
                 report(error.message ?: "Couldn't save. Your draft is still here. Try again.")
             } finally { saving = false }
         }
