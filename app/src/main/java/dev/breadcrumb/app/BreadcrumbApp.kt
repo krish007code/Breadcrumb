@@ -9,6 +9,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,6 +45,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -60,6 +66,7 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
     var settingsReturn by rememberSaveable { mutableStateOf("notebook") }
     var showLensHelp by rememberSaveable { mutableStateOf(false) }
+    var pendingEdit by remember { mutableStateOf<NotebookEntry?>(null) }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
             runCatching {
@@ -73,8 +80,8 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
     val scanPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let { vm.importPhoto("scan", it) }
     }
-    val solutionPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let { vm.importPhoto("solution", it) }
+    val solutionPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        vm.importPhotos("solution", uris)
     }
     val exportScan = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/*")) { destination ->
         val source = vm.scanUri
@@ -110,6 +117,11 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
             "detail" -> vm.detailOrigin
             else -> "notebook"
         })
+    }
+    fun requestEdit(entry: NotebookEntry) {
+        if (vm.editingId == entry.id && vm.editingRevision == entry.revision) vm.navigate("add")
+        else if (vm.draftStarted) pendingEdit = entry
+        else vm.edit(entry)
     }
 
     BackHandler(enabled = !vm.showWelcome && vm.page != "notebook") { if (!vm.saving) goBack() }
@@ -150,7 +162,7 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
                     if (vm.showWelcome) {
                         WelcomeScreen(vm::completeWelcome, github = { openLink(BrowserActions.GITHUB_URL) })
                     } else when (vm.page) {
-                    "notebook" -> NotebookScreen(vm, chooseFolder = { folderPicker.launch(null) },
+                    "notebook" -> NotebookScreen(vm, chooseFolder = { folderPicker.launch(null) }, edit = ::requestEdit,
                         settings = { settingsReturn = "notebook"; vm.navigate("settings") })
                     "add" -> AddScreen(vm, back = ::goBack,
                         settings = { settingsReturn = "add"; vm.navigate("settings") },
@@ -164,13 +176,20 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
                                 .onFailure { vm.report("Couldn't open Google. Check that a browser is installed.") }
                         },
                         googleImage = { showLensHelp = true }, openLink = ::openLink)
-                    "detail" -> SolutionScreen(vm, ::goBack, ::openLink)
+                    "detail" -> SolutionScreen(vm, ::goBack, ::openLink, ::requestEdit)
                     "progress" -> ProgressScreen(vm.entries, vm::open)
                     "settings" -> SettingsScreen(vm, ::goBack, chooseFolder = { folderPicker.launch(null) })
                   }
                 }
             }
         }
+    }
+
+    pendingEdit?.let { entry ->
+        AlertDialog(onDismissRequest = { pendingEdit = null }, title = { Text("Replace your current draft?") },
+            text = { Text("Open ${entry.title} for editing and discard the unfinished draft?") },
+            confirmButton = { TextButton(onClick = { pendingEdit = null; vm.edit(entry) }) { Text("Discard draft and edit") } },
+            dismissButton = { TextButton(onClick = { pendingEdit = null }) { Text("Keep draft") } })
     }
 
     if (showLensHelp) {
@@ -218,10 +237,14 @@ internal fun Header(title: String, back: (() -> Unit)? = null, action: (@Composa
 }
 
 @Composable
-private fun NotebookScreen(vm: NotebookViewModel, chooseFolder: () -> Unit, settings: () -> Unit) {
+private fun NotebookScreen(vm: NotebookViewModel, chooseFolder: () -> Unit, settings: () -> Unit, edit: (NotebookEntry) -> Unit) {
     var filter by rememberSaveable { mutableStateOf("") }
     var siteFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var siteMenu by remember { mutableStateOf(false) }
+    var deleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    vm.entries.firstOrNull { it.id == deleteId }?.let { entry ->
+        DeleteSolutionDialog(entry, { deleteId = null; vm.deleteEntry(entry) }, { deleteId = null })
+    }
     Header("Breadcrumb", action = {
         IconButton(onClick = settings) { Icon(Icons.Outlined.Settings, "Settings") }
     })
@@ -265,7 +288,7 @@ private fun NotebookScreen(vm: NotebookViewModel, chooseFolder: () -> Unit, sett
             } else LazyColumn(contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 104.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(visible, key = NotebookEntry::id) { entry ->
-                    SolutionRow(entry) { vm.open(entry) }
+                    SolutionRow(entry, onEdit = { edit(entry) }, onDelete = { deleteId = entry.id }) { vm.open(entry) }
                 }
             }
         }
@@ -292,7 +315,9 @@ private fun AddScreen(
 ) {
     val clipboard = LocalClipboardManager.current
     val enabled = !vm.saving && !vm.reading
-    Header("New solution", back = { if (!vm.saving) back() }, action = {
+    var review by rememberSaveable { mutableStateOf(false) }
+    if (review) PhotoReviewDialog(vm.solutionUris, confirm = { photos -> review = false; vm.save(photos) }, dismiss = { review = false })
+    Header(if (vm.editingId == null) "New solution" else "Edit solution", back = { if (!vm.saving) back() }, action = {
         IconButton(onClick = settings, enabled = !vm.saving) { Icon(Icons.Outlined.Settings, "Settings") }
     })
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp),
@@ -342,25 +367,36 @@ private fun AddScreen(
                 }) { Icon(Icons.Outlined.ContentPaste, "Paste problem link") } },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), enabled = !vm.saving,
                 shape = RoundedCornerShape(16.dp), minLines = 1, maxLines = 3)
+            TextButton(onClick = vm::cleanUrl, enabled = enabled && vm.url.isNotBlank()) {
+                Icon(Icons.Outlined.Link, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Clean URL")
+            }
             OutlinedTextField(vm.title, vm::updateTitle, Modifier.fillMaxWidth(), label = { Text("Problem title") },
                 enabled = !vm.saving, shape = RoundedCornerShape(16.dp), maxLines = 3)
             SiteDropdown(vm.site, vm::updateSite, enabled = !vm.saving)
         }
         Panel {
-            Text("Your handwritten solution", style = MaterialTheme.typography.titleMedium)
-            vm.solutionUri?.let { photo ->
-                AsyncImage(photo, "Your solution", Modifier.fillMaxWidth().height(230.dp).clip(RoundedCornerShape(16.dp)).background(Sand), contentScale = ContentScale.Fit)
+            Text("Solution photos (${vm.solutionUris.size})", style = MaterialTheme.typography.titleMedium)
+            if (vm.solutionUris.isNotEmpty()) {
+                Text("Add more pages or remove photos before saving.", color = Muted, style = MaterialTheme.typography.bodyMedium)
+                vm.solutionUris.forEachIndexed { index, photo ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(photo, "Solution photo ${index + 1}", Modifier.weight(1f).height(150.dp).clip(RoundedCornerShape(16.dp)).background(Sand), contentScale = ContentScale.Fit)
+                        IconButton(onClick = { vm.removePhoto(photo) }, enabled = enabled) { Icon(Icons.Outlined.Close, "Remove photo ${index + 1}") }
+                    }
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ActionButton(if (vm.solutionUri == null) "Take photo" else "Retake", Icons.Outlined.PhotoCamera, solutionCamera, modifier = Modifier.weight(1f), enabled = enabled)
-                ActionButton("Import", Icons.Outlined.Image, solutionImport, modifier = Modifier.weight(1f), enabled = enabled)
+                ActionButton("Take photo", Icons.Outlined.PhotoCamera, solutionCamera, modifier = Modifier.weight(1f), enabled = enabled)
+                ActionButton("Add photos", Icons.Outlined.Image, solutionImport, modifier = Modifier.weight(1f), enabled = enabled)
             }
         }
         if (vm.notebookUri == null) ActionButton("Choose notebook folder", Icons.Outlined.FolderOpen, chooseFolder, enabled = enabled)
-        Button(onClick = vm::save, enabled = enabled && vm.title.isNotBlank() && vm.url.isNotBlank() && vm.solutionUri != null && vm.notebookUri != null,
+        Button(onClick = { review = true }, enabled = enabled && !vm.loading && vm.title.isNotBlank() && vm.url.isNotBlank() && vm.solutionUris.isNotEmpty() && vm.notebookUri != null,
             modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp), shape = RoundedCornerShape(28.dp)) {
             if (vm.saving) { CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp); Spacer(Modifier.width(12.dp)) }
-            Text(if (vm.saving) "Saving solution…" else "Save solution")
+            Text(if (vm.saving) "Saving solution…" else "Review and save")
         }
     }
 }
@@ -372,9 +408,14 @@ internal fun Panel(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun SolutionRow(entry: NotebookEntry, action: () -> Unit) {
-    Surface(onClick = action, shape = RoundedCornerShape(22.dp), color = Color.White) {
+internal fun SolutionRow(entry: NotebookEntry, onEdit: (() -> Unit)? = null, onDelete: (() -> Unit)? = null, action: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+    Surface(modifier = Modifier.clip(RoundedCornerShape(22.dp)).combinedClickable(onClick = action,
+        onLongClickLabel = "Edit or delete solution", onLongClick = if (onEdit != null || onDelete != null) ({ menu = true }) else null),
+        shape = RoundedCornerShape(22.dp), color = Color.White) {
         Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             AsyncImage(entry.photoUri, "Solution thumbnail", Modifier.size(64.dp).clip(RoundedCornerShape(14.dp)).background(Sand), contentScale = ContentScale.Crop)
             Spacer(Modifier.width(14.dp))
@@ -382,9 +423,15 @@ internal fun SolutionRow(entry: NotebookEntry, action: () -> Unit) {
                 Text(entry.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(entry.site.let { if (it == ProblemSite.OTHER) Uri.parse(entry.url).host.orEmpty() else it.label },
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
+                if (entry.photoUris.size > 1) Text("${entry.photoUris.size} photos", color = Muted, style = MaterialTheme.typography.bodyMedium)
             }
             Icon(Icons.Outlined.ChevronRight, null, tint = Muted)
         }
+    }
+    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+        if (onEdit != null) DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = { menu = false; onEdit() })
+        if (onDelete != null) DropdownMenuItem(text = { Text("Delete") }, leadingIcon = { Icon(Icons.Outlined.DeleteOutline, null) }, onClick = { menu = false; onDelete() })
+    }
     }
 }
 
@@ -399,10 +446,13 @@ private fun ActionButton(text: String, icon: ImageVector, action: () -> Unit, mo
 }
 
 @Composable
-private fun SolutionScreen(vm: NotebookViewModel, back: () -> Unit, openLink: (String) -> Unit) {
-    var fullscreen by rememberSaveable { mutableStateOf(false) }
+private fun SolutionScreen(vm: NotebookViewModel, back: () -> Unit, openLink: (String) -> Unit, edit: (NotebookEntry) -> Unit) {
+    var fullscreen by rememberSaveable { mutableIntStateOf(-1) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     Header("Your solution", back = { if (!vm.saving) back() }, action = {
+        IconButton(onClick = { vm.selectedEntry?.let(edit) }, enabled = !vm.saving && vm.selectedEntry != null) {
+            Icon(Icons.Outlined.Edit, "Edit solution")
+        }
         IconButton(onClick = { confirmDelete = true }, enabled = !vm.saving && vm.selectedEntry != null) {
             Icon(Icons.Outlined.DeleteOutline, "Delete solution")
         }
@@ -417,23 +467,39 @@ private fun SolutionScreen(vm: NotebookViewModel, back: () -> Unit, openLink: (S
         Text(entry.title, style = MaterialTheme.typography.headlineMedium)
         SiteDropdown(entry.site, { vm.changeEntrySite(entry, it) }, enabled = !vm.saving)
         ActionButton("Open question", Icons.AutoMirrored.Outlined.OpenInNew, { openLink(entry.url) })
-        Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).clickable { fullscreen = true }) {
-            AsyncImage(entry.photoUri, "Handwritten solution. Tap to enlarge.", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+        val pager = rememberPagerState(pageCount = { entry.photoUris.size })
+        Text("Photo ${pager.currentPage + 1} of ${entry.photoUris.size}", color = Muted, style = MaterialTheme.typography.bodyMedium)
+        Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White)) {
+            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { index ->
+                AsyncImage(entry.photoUris[index], "Solution photo ${index + 1}. Tap to enlarge.", Modifier.fillMaxSize().clickable { fullscreen = index }, contentScale = ContentScale.Fit)
+            }
             Icon(Icons.Outlined.ZoomIn, "Enlarge solution", Modifier.align(Alignment.BottomEnd).padding(16.dp).background(Paper, CircleShape).padding(10.dp))
         }
     }
-    if (confirmDelete) AlertDialog(
-        onDismissRequest = { confirmDelete = false },
+    if (confirmDelete) DeleteSolutionDialog(entry, { confirmDelete = false; vm.deleteEntry(entry) }, { confirmDelete = false })
+    if (fullscreen >= 0) PhotoViewer(entry.photoUris, fullscreen.coerceAtMost(entry.photoUris.lastIndex)) { fullscreen = -1 }
+}
+
+@Composable
+private fun DeleteSolutionDialog(entry: NotebookEntry, confirm: () -> Unit, dismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = dismiss,
         title = { Text("Delete this solution?") },
-        text = { Text("${entry.title} and its solution photo will be removed from your notebook folder. This cannot be undone.") },
+        text = { Text("${entry.title} and all ${entry.photoUris.size} solution photos will be removed from your notebook folder. This cannot be undone.") },
         confirmButton = {
-            TextButton(onClick = { confirmDelete = false; vm.deleteEntry(entry) }, enabled = !vm.saving) {
+            TextButton(onClick = confirm) {
                 Text("Delete", color = MaterialTheme.colorScheme.error)
             }
         },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Keep solution") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Keep solution") } },
     )
-    if (fullscreen) Dialog(onDismissRequest = { fullscreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+}
+
+@Composable
+private fun PhotoViewer(photos: List<Uri>, initialIndex: Int, close: () -> Unit) {
+    var index by rememberSaveable { mutableIntStateOf(initialIndex) }
+    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+      key(photos[index]) {
         var scale by remember { mutableFloatStateOf(1f) }
         var offset by remember { mutableStateOf(Offset.Zero) }
         Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(Unit) {
@@ -442,14 +508,42 @@ private fun SolutionScreen(vm: NotebookViewModel, back: () -> Unit, openLink: (S
                 offset = if (scale == 1f) Offset.Zero else offset + pan
             }
         }) {
-            AsyncImage(entry.photoUri, "Your solution. Pinch to zoom and drag to pan.", Modifier.fillMaxSize().graphicsLayer {
+            AsyncImage(photos[index], "Your solution. Pinch to zoom and drag to pan.", Modifier.fillMaxSize().graphicsLayer {
                 scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y
             }, contentScale = ContentScale.Fit)
-            IconButton(onClick = { fullscreen = false }, Modifier.align(Alignment.TopEnd).padding(16.dp).background(Ink, CircleShape)) {
+            IconButton(onClick = close, Modifier.align(Alignment.TopEnd).padding(16.dp).background(Ink, CircleShape)) {
                 Icon(Icons.Outlined.Close, "Close enlarged photo", tint = Color.White)
             }
+            Row(Modifier.align(Alignment.BottomCenter).padding(16.dp).background(Ink, RoundedCornerShape(24.dp)), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { index-- }, enabled = index > 0) { Icon(Icons.Outlined.ChevronLeft, "Previous photo", tint = Color.White) }
+                Text("${index + 1} / ${photos.size}", color = Color.White)
+                IconButton(onClick = { index++ }, enabled = index < photos.lastIndex) { Icon(Icons.Outlined.ChevronRight, "Next photo", tint = Color.White) }
+            }
         }
+      }
     }
+}
+
+@Composable
+private fun PhotoReviewDialog(photos: List<Uri>, confirm: (List<Uri>) -> Unit, dismiss: () -> Unit) {
+    var kept by rememberSaveable(photos) { mutableStateOf(ArrayList(photos.map(Uri::toString))) }
+    AlertDialog(onDismissRequest = dismiss, title = { Text("Choose photos to keep") },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 440.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(photos, key = Uri::toString) { photo ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(modifier = Modifier.semantics { contentDescription = "Keep solution photo ${photos.indexOf(photo) + 1}" }, checked = photo.toString() in kept, onCheckedChange = { selected ->
+                            kept = ArrayList(if (selected) kept + photo.toString() else kept - photo.toString())
+                        })
+                        AsyncImage(photo, "Solution photo ${photos.indexOf(photo) + 1}", Modifier.weight(1f).height(130.dp).clip(RoundedCornerShape(12.dp)).background(Sand), contentScale = ContentScale.Fit)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { confirm(photos.filter { it.toString() in kept }) }, enabled = kept.isNotEmpty()) {
+            Text("Save ${kept.size} ${if (kept.size == 1) "photo" else "photos"}")
+        } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Back") } })
 }
 
 @Composable

@@ -50,8 +50,12 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         private set
     var scanUri by mutableStateOf(saved.get<String>("scan")?.let(Uri::parse))
         private set
-    var solutionUri by mutableStateOf(saved.get<String>("solution")?.let(Uri::parse))
+    var solutionUris by mutableStateOf((saved.get<ArrayList<String>>("solutions")
+        ?: ArrayList(listOfNotNull(saved.get<String>("solution")))).map(Uri::parse))
         private set
+    var editingId by mutableStateOf(saved.get<String>("editingId"))
+        private set
+    val editingRevision get() = saved.get<Long>("editingRevision")
     var entries by mutableStateOf<List<NotebookEntry>>(emptyList())
         private set
     var matches by mutableStateOf<List<ProblemMatch>>(emptyList())
@@ -80,7 +84,7 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         private set
     val detailOrigin get() = saved.get<String>("detailOrigin") ?: "notebook"
     val selectedEntry get() = entries.firstOrNull { it.id == selectedId }
-    val draftStarted get() = title.isNotBlank() || url.isNotBlank() || scanUri != null || solutionUri != null
+    val draftStarted get() = title.isNotBlank() || url.isNotBlank() || scanUri != null || solutionUris.isNotEmpty()
 
     init { refresh() }
 
@@ -91,6 +95,29 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
     }
 
     fun updateTitle(value: String) { title = value; saved["title"] = value }
+    fun cleanUrl() {
+        runCatching { ProblemLinks.clean(url) }.onSuccess { updateUrl(it); report("URL cleaned.") }
+            .onFailure { report(it.message ?: "Check the problem link first.") }
+    }
+    private fun setPhotos(photos: List<Uri>) {
+        solutionUris = photos.distinct()
+        saved["solutions"] = ArrayList(solutionUris.map(Uri::toString))
+        saved.remove<String>("solution")
+    }
+    fun removePhoto(uri: Uri) { if (!saving && !reading) setPhotos(solutionUris - uri) }
+    fun edit(entry: NotebookEntry) {
+        if (saving || reading) return
+        saved["detailOrigin"] = if (page == "detail") detailOrigin else page
+        clearDraft()
+        editingId = entry.id
+        saved["editingId"] = entry.id
+        saved["editingRevision"] = entry.revision
+        updateUrl(entry.url)
+        updateTitle(entry.title)
+        updateSite(entry.site)
+        setPhotos(entry.photoUris)
+        navigate("add")
+    }
     fun completeWelcome() { settings.welcomeCompleted = true; showWelcome = false }
     fun showTutorial() { showWelcome = true }
     fun updateSite(value: ProblemSite) {
@@ -184,10 +211,13 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
             try {
                 withContext(NonCancellable) { store.delete(tree, entry) }
                 entries = entries.filterNot { it.id == entry.id }
-                selectedId = null
-                saved.remove<String>("selectedId")
-                page = detailOrigin
-                saved["page"] = page
+                if (editingId == entry.id) clearDraft()
+                if (page == "detail" && selectedId == entry.id) {
+                    selectedId = null
+                    saved.remove<String>("selectedId")
+                    page = detailOrigin
+                    saved["page"] = page
+                }
                 report("Solution deleted.")
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
@@ -227,13 +257,18 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         if (success && uri != null && kind != null) acceptImage(kind, uri)
     }
 
-    fun importPhoto(kind: String, uri: Uri) {
+    fun importPhoto(kind: String, uri: Uri) = importPhotos(kind, listOf(uri))
+
+    fun importPhotos(kind: String, uris: List<Uri>) {
         if (saving || reading) return
+        if (uris.isEmpty()) return
         reading = true
         navigate("add")
         viewModelScope.launch {
+            val imported = mutableListOf<Uri>()
             try {
-                val local = withContext(Dispatchers.IO) {
+                withContext(Dispatchers.IO) {
+                  uris.forEach { uri ->
                     val mime = context.contentResolver.getType(uri).orEmpty()
                     require(mime.startsWith("image/")) { "Choose an image file." }
                     val extension = when (mime) {
@@ -247,15 +282,17 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
                         val source = context.contentResolver.openInputStream(uri) ?: throw IOException("Unable to open this photo.")
                         val bytes = source.use { input -> target.outputStream().use { input.copyTo(it) } }
                         require(bytes > 0) { "This photo is empty." }
-                        fileUri(target)
+                        imported.add(fileUri(target))
                     } catch (error: Exception) { target.delete(); throw error }
+                  }
                 }
-                reading = false
-                acceptImage(kind, local)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 report(error.message ?: "Unable to import this photo.")
+            } finally {
                 reading = false
+                if (kind == "solution") setPhotos(solutionUris + imported)
+                else imported.lastOrNull()?.let { acceptImage(kind, it) }
             }
         }
     }
@@ -270,8 +307,7 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
     private fun acceptImage(kind: String, uri: Uri) {
         navigate("add")
         if (kind == "solution") {
-            solutionUri = uri
-            saved["solution"] = uri.toString()
+            setPhotos(solutionUris + uri)
         } else {
             scanUri = uri
             saved["scan"] = uri.toString()
@@ -335,24 +371,33 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
             .onFailure { report("Unable to save the search key on this phone.") }
     }
 
-    fun save() {
+    fun save(photos: List<Uri>) {
         if (saving || reading || loading) return
         val tree = notebookUri ?: run { report("Choose your notebook folder first."); return }
         val cleanedTitle = title.trim()
         if (cleanedTitle.isBlank()) { report("Give this problem a title."); return }
         val normalizedUrl = runCatching { ProblemLinks.normalize(url) }.getOrElse { report(it.message.orEmpty()); return }
-        val photo = solutionUri ?: run { report("Add a photo of your solution."); return }
+        val selectedPhotos = photos.distinct()
+        if (selectedPhotos.isEmpty() || !solutionUris.containsAll(selectedPhotos)) { report("Keep at least one solution photo."); return }
+        val original = editingId?.let { id -> entries.firstOrNull { it.id == id } }
+        if (editingId != null && original == null) { report("The original entry is unavailable. Reopen its notebook folder."); return }
         val selectedSite = site
         saving = true
         viewModelScope.launch {
             try {
                 // Finish an in-progress file write even if navigation or activity lifetime changes.
-                val entry = withContext(NonCancellable) { store.save(tree, cleanedTitle, normalizedUrl, photo, selectedSite) }
-                entries = (entries + entry).sortedByDescending(NotebookEntry::createdAt)
+                val entry = withContext(NonCancellable) {
+                    if (original == null) store.save(tree, cleanedTitle, normalizedUrl, selectedPhotos, selectedSite)
+                    else store.update(tree, original.copy(revision = saved.get<Long>("editingRevision") ?: original.revision),
+                        cleanedTitle, normalizedUrl, selectedPhotos, selectedSite)
+                }
+                entries = (entries.filterNot { it.id == entry.id } + entry).sortedByDescending(NotebookEntry::createdAt)
                 clearDraft()
-                page = "notebook"
+                selectedId = entry.id
+                saved["selectedId"] = entry.id
+                page = if (original == null) "notebook" else "detail"
                 saved["page"] = page
-                report("Solution saved.")
+                report(if (original == null) "Solution saved." else "Solution updated.")
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 report(error.message ?: "Couldn't save. Your draft is still here. Try again.")
@@ -371,7 +416,10 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         saved.remove<String>("site")
         saved.remove<Boolean>("manualSite")
         scanUri = null
-        solutionUri = null
+        setPhotos(emptyList())
+        editingId = null
+        saved.remove<String>("editingId")
+        saved.remove<Long>("editingRevision")
         saved.remove<String>("scan")
         saved.remove<String>("solution")
         status = ""
