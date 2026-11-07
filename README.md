@@ -4,17 +4,20 @@ An Android notebook for coding problems and handwritten solutions. Save a proble
 
 The interface takes visual direction from [Tally](https://composables.com/apps/tally), including cream backgrounds, rounded white panels, dark buttons, and small colour accents. Breadcrumb's UI components are independently implemented.
 
+[Download the Android APK from GitHub Releases](https://github.com/krish007code/Breadcrumb/releases/tag/v0.2.0). This repository is private. Sign in with the owner account or an invited collaborator account to access the release.
+
 ## Use case
 
 You solve a LeetCode, Codeforces, or GeeksforGeeks problem on paper. Instead of retyping your explanation or losing the page, take a solution photo and connect it to the problem link. Your saved work stays in an ordinary folder on your phone, which you can copy to a hard disk.
 
-Each saved entry contains an editable title, a source URL, and one solution photo. The question remains available through its source URL.
+Each saved entry contains an editable title, a source URL, a site category, and one solution photo. The question remains available through its source URL.
 
 ## App flow
 
 ```mermaid
 flowchart TD
-    Launch[Open Breadcrumb] --> Folder{Notebook folder selected?}
+    Launch[Open Breadcrumb] --> Welcome[Short welcome tutorial on first launch]
+    Welcome --> Folder{Notebook folder selected?}
     Folder -->|No| Select[Choose a folder on the phone]
     Folder -->|Yes| Notebook[Notebook and title search]
     Select --> Notebook
@@ -59,23 +62,39 @@ flowchart TD
 
 ## How to use
 
-1. Open Breadcrumb and choose a notebook folder using Android's folder picker. Create a folder such as `Documents/Breadcrumb` if needed.
+1. Open Breadcrumb, read the short welcome tutorial, and tap **Continue**. Choose a notebook folder using Android's folder picker. Create a folder such as `Documents/Breadcrumb` if needed.
 2. Tap **New solution**.
 3. Paste a problem link, share a page from your browser to Breadcrumb, or scan a question using **Scan** or **Screenshot**.
 4. If automatic lookup is configured, check the suggested problem and tap **Use this problem**. Otherwise use one of the two Google search buttons and return with a source link.
-5. Check the suggested title and edit it if needed. LeetCode and GeeksforGeeks suggestions come from the URL or search result. A pasted Codeforces URL suggests the contest number and problem letter, which you can replace with the problem name.
+5. Check the suggested title and edit it if needed. Select a **Site** from the dropdown. The URL suggests a category until you choose one yourself. LeetCode and GeeksforGeeks title suggestions come from the URL or search result. A pasted Codeforces URL suggests the contest number and problem letter, which you can replace with the problem name.
 6. Take or import a photo of your solution and tap **Save solution**.
 7. Search the notebook with any words from the title. Word order and letter case are ignored. Open an entry, tap its photo to enlarge it, and pinch to zoom. **Open question** opens the original URL.
 
 Leaving the add screen preserves your draft. The notebook's add button becomes **Continue draft** until the entry is saved.
 
+The **Site** dropdown includes LeetCode, Codeforces, GeeksforGeeks, CodeChef, AtCoder, HackerRank, and Other sites. Filter the notebook using **All sites**, or change an existing entry's category in its solution screen. Older entries get their category from the source URL until you select a category yourself.
+
+To delete an entry, open its solution, tap the trash icon in the top-right corner, and confirm **Delete**. This removes the entry's folder and its files from the phone and updates the progress figures. Deletion cannot be undone in the app.
+
+The welcome screen's **See GitHub & star** action opens the repository so you can view or star it on GitHub. You can view the tutorial again from Settings.
+
+### Install or update from GitHub Mobile
+
+Open this repository's [v0.2.0 release](https://github.com/krish007code/Breadcrumb/releases/tag/v0.2.0), expand **Assets**, and download `Breadcrumb-0.2.0.apk`. Open it using Android's Files app and allow installation from that source when prompted. Install over the existing Breadcrumb app to retain its setup and notebook folder selection.
+
+Release downloads are available to the owner and invited collaborators while the repository is private.
+
 ### Google text and photo search
 
 **Search Google with text** opens an ordinary Google search with the recognised words filled in. You can edit the words before launching it.
 
-**Search with this photo** reuses the captured scan. **Open with Google** hands the image to the Google app when it advertises image-sharing support. Otherwise Android shows compatible apps. Image handling varies by the installed Google app and phone.
+**Search with this photo** reuses the captured scan and sends this text alongside it using Android's sharing intent.
 
-**Save and open Lens** saves the same scan to a location you choose and opens Lens in your browser. Select that saved image in Lens. When you find the question, use your browser's Share action to send its URL to Breadcrumb, or copy and paste the URL.
+> Give me the original link for this question. Return the coding problem's title and direct question URL.
+
+**Open with Google** hands the image and text to the Google app when it advertises image-sharing support. Otherwise Android shows compatible apps. The same request is copied to your clipboard. If Google only uses the image, paste the request into **Ask about this image**. Image and text handling varies by the installed Google app and phone.
+
+**Save and open Lens** saves the same scan to a location you choose, copies the link request, and opens Lens in your browser. Select that saved image in Lens and paste the request into **Ask about this image**. When you find the question, use your browser's Share action to send its URL to Breadcrumb, or copy and paste the URL.
 
 Direct photo handoff to Google Lens still requires verification on a physical phone. The app preserves the save-and-select route for phones without a compatible image handler.
 
@@ -106,11 +125,14 @@ Choose a local folder in Android's Files picker. Entries are stored in readable 
 Breadcrumb/
   Two Sum — a1b2c3d4/
     source.txt
+    site.txt
     entry.json
     solution.jpg
 ```
 
 `source.txt` contains the title and original URL. `entry.json` contains the same metadata, a stable entry ID, the photo filename, the save timestamp, and format version 1. Imported PNG, WebP, and HEIC photos retain their respective extensions.
+
+`site.txt` contains the selected site category. It is optional for older entries, which are categorised from their URLs. Changing the category leaves the original problem URL intact.
 
 The short suffix keeps identically named entries separate. The app copies the solution photo before writing entry metadata and cleans up a failed save. The notebook is reconstructed by reading these folders.
 
@@ -153,6 +175,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Verification status
 
-The initial debug APK builds successfully. All 13 JVM unit tests pass. Android lint completes with zero errors and 18 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions.
+The 0.2.0 debug APK builds successfully. All 16 JVM unit tests pass, including category compatibility checks for existing notebook entries. Android lint completes with zero errors and 19 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions.
 
 Physical-device checks for camera capture, document-provider behaviour, browser sharing, and Google Lens handoff are pending. Live TinyFish lookup requires a user-provided key and has not been exercised against a live account.
