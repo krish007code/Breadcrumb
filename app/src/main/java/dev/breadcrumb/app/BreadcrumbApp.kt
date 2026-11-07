@@ -88,8 +88,9 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
                             output.use { data.copyTo(it) }
                         }
                     }
+                    BrowserActions.copyImageSearchPrompt(context)
                     BrowserActions.open(context, "https://lens.google/")
-                    vm.report("Select the photo you just saved in Google Lens, then share or paste the problem link here.")
+                    vm.report("Select your saved photo in Lens. The request for its question link is copied for Ask about this image.")
                 }.onFailure { vm.report("Couldn't open Lens. Your scan can still be selected from the location you saved it.") }
             }
         }
@@ -111,7 +112,7 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
         })
     }
 
-    BackHandler(enabled = vm.page != "notebook") { if (!vm.saving) goBack() }
+    BackHandler(enabled = !vm.showWelcome && vm.page != "notebook") { if (!vm.saving) goBack() }
     LaunchedEffect(vm.message) {
         vm.message?.let { snackbar.showSnackbar(it); vm.dismissMessage() }
     }
@@ -120,7 +121,7 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
         containerColor = Paper,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (vm.page == "notebook" || vm.page == "progress" || (vm.page == "settings" && settingsReturn != "add")) {
+            if (!vm.showWelcome && (vm.page == "notebook" || vm.page == "progress" || (vm.page == "settings" && settingsReturn != "add"))) {
                 NavigationBar(containerColor = Paper, tonalElevation = 0.dp) {
                     NavigationBarItem(selected = vm.page == "notebook", onClick = { vm.navigate("notebook") },
                         icon = { Icon(Icons.Outlined.Home, null) }, label = { Text("Notebook") })
@@ -134,7 +135,7 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
             }
         },
         floatingActionButton = {
-            if (vm.page == "notebook") {
+            if (!vm.showWelcome && vm.page == "notebook") {
                 ExtendedFloatingActionButton(
                     onClick = { vm.navigate("add") }, containerColor = Ink, contentColor = Color.White,
                     shape = RoundedCornerShape(28.dp), icon = { Icon(Icons.Outlined.Add, null) },
@@ -145,8 +146,10 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding(), horizontalAlignment = Alignment.CenterHorizontally) {
             Column(Modifier.widthIn(max = 680.dp).fillMaxSize()) {
-                screenState.SaveableStateProvider(vm.page) {
-                  when (vm.page) {
+                screenState.SaveableStateProvider(if (vm.showWelcome) "welcome" else vm.page) {
+                    if (vm.showWelcome) {
+                        WelcomeScreen(vm::completeWelcome, github = { openLink(BrowserActions.GITHUB_URL) })
+                    } else when (vm.page) {
                     "notebook" -> NotebookScreen(vm, chooseFolder = { folderPicker.launch(null) },
                         settings = { settingsReturn = "notebook"; vm.navigate("settings") })
                     "add" -> AddScreen(vm, back = ::goBack,
@@ -174,7 +177,7 @@ fun BreadcrumbApp(vm: NotebookViewModel) {
         AlertDialog(
             onDismissRequest = { showLensHelp = false },
             title = { Text("Search this photo") },
-            text = { Text("Open your captured scan in Google or a compatible image app. If Lens isn't offered, save the scan and select it in Lens. Share or paste the problem link back into Breadcrumb.") },
+            text = { Text("The photo is sent with ‘Give me the original link for this question.’ The request is also copied so you can paste it into Ask about this image if Google leaves the text out. Share or paste the question link back here.") },
             confirmButton = {
                 TextButton(onClick = {
                     showLensHelp = false
@@ -217,6 +220,8 @@ internal fun Header(title: String, back: (() -> Unit)? = null, action: (@Composa
 @Composable
 private fun NotebookScreen(vm: NotebookViewModel, chooseFolder: () -> Unit, settings: () -> Unit) {
     var filter by rememberSaveable { mutableStateOf("") }
+    var siteFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var siteMenu by remember { mutableStateOf(false) }
     Header("Breadcrumb", action = {
         IconButton(onClick = settings) { Icon(Icons.Outlined.Settings, "Settings") }
     })
@@ -228,6 +233,18 @@ private fun NotebookScreen(vm: NotebookViewModel, chooseFolder: () -> Unit, sett
         shape = RoundedCornerShape(20.dp), singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = Color.White, unfocusedBorderColor = Border),
     )
+    Box(Modifier.padding(horizontal = 24.dp)) {
+        TextButton(onClick = { siteMenu = true }) {
+            Text(ProblemSite.entries.firstOrNull { it.name == siteFilter }?.label ?: "All sites")
+            Icon(Icons.Outlined.ExpandMore, null)
+        }
+        DropdownMenu(expanded = siteMenu, onDismissRequest = { siteMenu = false }) {
+            DropdownMenuItem(text = { Text("All sites") }, onClick = { siteFilter = null; siteMenu = false })
+            ProblemSite.entries.forEach { site ->
+                DropdownMenuItem(text = { Text(site.label) }, onClick = { siteFilter = site.name; siteMenu = false })
+            }
+        }
+    }
     when {
         vm.notebookUri == null -> EmptyPanel(Icons.Outlined.FolderOpen, "A place for your solutions",
             "Choose a folder on your phone. Breadcrumb will keep each problem link and your handwritten solution together there.",
@@ -238,7 +255,7 @@ private fun NotebookScreen(vm: NotebookViewModel, chooseFolder: () -> Unit, sett
         vm.entries.isEmpty() -> EmptyPanel(Icons.Outlined.EditNote, "Your first breadcrumb",
             "Add a problem link and a photo of your solution. Come back whenever you want to revise it.", "Add a solution", { vm.navigate("add") })
         else -> {
-            val visible = vm.entries.filter { ProblemLinks.matches(it.title, filter) }
+            val visible = vm.entries.filter { ProblemLinks.matches(it.title, filter) && (siteFilter == null || it.site.name == siteFilter) }
             Row(Modifier.fillMaxWidth().padding(start = 26.dp, end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("${visible.size} ${if (visible.size == 1) "solution" else "solutions"}", Modifier.weight(1f), color = Muted)
                 IconButton(onClick = vm::refresh) { Icon(Icons.Outlined.Refresh, "Refresh notebook") }
@@ -327,6 +344,7 @@ private fun AddScreen(
                 shape = RoundedCornerShape(16.dp), minLines = 1, maxLines = 3)
             OutlinedTextField(vm.title, vm::updateTitle, Modifier.fillMaxWidth(), label = { Text("Problem title") },
                 enabled = !vm.saving, shape = RoundedCornerShape(16.dp), maxLines = 3)
+            SiteDropdown(vm.site, vm::updateSite, enabled = !vm.saving)
         }
         Panel {
             Text("Your handwritten solution", style = MaterialTheme.typography.titleMedium)
@@ -362,7 +380,7 @@ internal fun SolutionRow(entry: NotebookEntry, action: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(entry.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(ProblemSite.fromUrl(entry.url).let { if (it == ProblemSite.OTHER) Uri.parse(entry.url).host.orEmpty() else it.label },
+                Text(entry.site.let { if (it == ProblemSite.OTHER) Uri.parse(entry.url).host.orEmpty() else it.label },
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
             }
             Icon(Icons.Outlined.ChevronRight, null, tint = Muted)
@@ -383,7 +401,12 @@ private fun ActionButton(text: String, icon: ImageVector, action: () -> Unit, mo
 @Composable
 private fun SolutionScreen(vm: NotebookViewModel, back: () -> Unit, openLink: (String) -> Unit) {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
-    Header("Your solution", back)
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    Header("Your solution", back = { if (!vm.saving) back() }, action = {
+        IconButton(onClick = { confirmDelete = true }, enabled = !vm.saving && vm.selectedEntry != null) {
+            Icon(Icons.Outlined.DeleteOutline, "Delete solution")
+        }
+    })
     val entry = vm.selectedEntry
     if (entry == null) {
         if (vm.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -392,12 +415,24 @@ private fun SolutionScreen(vm: NotebookViewModel, back: () -> Unit, openLink: (S
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(entry.title, style = MaterialTheme.typography.headlineMedium)
+        SiteDropdown(entry.site, { vm.changeEntrySite(entry, it) }, enabled = !vm.saving)
         ActionButton("Open question", Icons.AutoMirrored.Outlined.OpenInNew, { openLink(entry.url) })
         Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color.White).clickable { fullscreen = true }) {
             AsyncImage(entry.photoUri, "Handwritten solution. Tap to enlarge.", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             Icon(Icons.Outlined.ZoomIn, "Enlarge solution", Modifier.align(Alignment.BottomEnd).padding(16.dp).background(Paper, CircleShape).padding(10.dp))
         }
     }
+    if (confirmDelete) AlertDialog(
+        onDismissRequest = { confirmDelete = false },
+        title = { Text("Delete this solution?") },
+        text = { Text("${entry.title} and its solution photo will be removed from your notebook folder. This cannot be undone.") },
+        confirmButton = {
+            TextButton(onClick = { confirmDelete = false; vm.deleteEntry(entry) }, enabled = !vm.saving) {
+                Text("Delete", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Keep solution") } },
+    )
     if (fullscreen) Dialog(onDismissRequest = { fullscreen = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         var scale by remember { mutableFloatStateOf(1f) }
         var offset by remember { mutableStateOf(Offset.Zero) }
@@ -438,6 +473,26 @@ private fun SettingsScreen(vm: NotebookViewModel, back: () -> Unit, chooseFolder
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
             Button(onClick = { vm.saveSearchKey(key); key = "" }, enabled = key.isNotBlank()) { Text("Save key") }
             if (vm.hasSearchKey) TextButton(onClick = { vm.saveSearchKey("") }) { Text("Remove key") }
+        }
+        TextButton(onClick = vm::showTutorial) { Text("View welcome tutorial") }
+    }
+}
+
+@Composable
+private fun SiteDropdown(site: ProblemSite, select: (ProblemSite) -> Unit, enabled: Boolean = true) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Site", style = MaterialTheme.typography.bodyMedium, color = Muted)
+        Box {
+            OutlinedButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+                Text(site.label, Modifier.weight(1f))
+                Icon(Icons.Outlined.ExpandMore, "Choose site")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                ProblemSite.entries.forEach { option ->
+                    DropdownMenuItem(text = { Text(option.label) }, onClick = { select(option); expanded = false })
+                }
+            }
         }
     }
 }
