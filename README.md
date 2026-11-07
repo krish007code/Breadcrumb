@@ -158,9 +158,9 @@ Detekt 1.23.8 and Compose Rules 0.4.23 are configured for Kotlin and Compose ana
 ./gradlew :app:detekt
 ```
 
-The first scan reported 272 findings, including 14 Compose findings. Initial modifier, layout, loop, and cancellation fixes reduced the result to 254 findings, including 4 Compose findings. The remaining items and suggested follow-up work are documented in the [code quality review](docs/code-quality-review.md).
+The first audit reported 272 findings. After the initial fixes there were 254. The follow-up refactor leaves three Detekt findings and zero Compose findings. Detekt still fails the build while these remain. See the [code quality review](docs/code-quality-review.md) and [Android evaluation guide](docs/android-evaluation.md).
 
-Detekt currently returns a failing exit status for the remaining findings and is attached to Gradle's `check` task. To run the other checks to completion in the same invocation, use the following command.
+Run the other checks to completion alongside Detekt with:
 
 ```bash
 ./gradlew :app:detekt testDebugUnitTest lintDebug assembleDebug --continue
@@ -203,6 +203,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Verification status
 
-The debug APK builds successfully. All 24 JVM unit tests pass, including legacy single-photo metadata, multiple-photo ordering, edit identity/date preservation, and URL-cleaning checks. Android lint completes with zero errors and 22 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions. Detekt reports 254 open findings, including 4 Compose findings.
+The debug APK builds successfully. All 24 JVM unit tests pass, including legacy single-photo metadata, multiple-photo ordering, edit identity/date preservation, and URL-cleaning checks. Android lint completes with zero errors and 22 warnings covering dependency updates, optional Kotlin idioms, and the newer Android backup configuration format. The project uses pinned dependency versions. Detekt reports three open findings and zero Compose findings.
 
 Physical-device checks for camera capture, document-provider behaviour, browser sharing, and Google Lens handoff are pending. Live TinyFish lookup requires a user-provided key and has not been exercised against a live account.
