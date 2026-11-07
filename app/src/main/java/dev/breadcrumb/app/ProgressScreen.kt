@@ -120,15 +120,17 @@ private fun Overview(entries: List<NotebookEntry>, stats: ActivityStats) {
     Text("Sites", style = MaterialTheme.typography.headlineMedium)
     Panel {
         val sites = listOf(ProblemSite.LEETCODE, ProblemSite.CODEFORCES, ProblemSite.GEEKSFORGEEKS) +
-            if (inRange.any { ProblemSite.fromUrl(it.url) == ProblemSite.OTHER }) listOf(ProblemSite.OTHER) else emptyList()
+            ProblemSite.entries.filter { site ->
+                site !in listOf(ProblemSite.LEETCODE, ProblemSite.CODEFORCES, ProblemSite.GEEKSFORGEEKS) && inRange.any { it.site == site }
+            }
         sites.forEachIndexed { index, site ->
-            val siteEntries = inRange.filter { ProblemSite.fromUrl(it.url) == site }
+            val siteEntries = inRange.filter { it.site == site }
             val siteStats = ActivityStats(siteEntries.map(NotebookEntry::createdAt), stats.today, ZoneId.systemDefault())
             val color = when (site) {
                 ProblemSite.LEETCODE -> Color(0xFFFF9F2E)
                 ProblemSite.CODEFORCES -> Sky
                 ProblemSite.GEEKSFORGEEKS -> Meadow
-                ProblemSite.OTHER -> Orchid
+                else -> Orchid
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

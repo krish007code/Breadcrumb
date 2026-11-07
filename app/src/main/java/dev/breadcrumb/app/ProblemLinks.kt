@@ -6,18 +6,25 @@ import java.text.Normalizer
 import java.util.Locale
 
 enum class ProblemSite(val label: String) {
-    LEETCODE("LeetCode"), CODEFORCES("Codeforces"), GEEKSFORGEEKS("GeeksforGeeks"), OTHER("Other sites");
+    LEETCODE("LeetCode"), CODEFORCES("Codeforces"), GEEKSFORGEEKS("GeeksforGeeks"),
+    CODECHEF("CodeChef"), ATCODER("AtCoder"), HACKERRANK("HackerRank"), OTHER("Other sites");
 
     companion object {
         fun fromUrl(url: String): ProblemSite {
-            val host = runCatching { URI(url).host.orEmpty().removePrefix("www.").lowercase(Locale.ROOT) }.getOrDefault("")
+            val candidate = if (url.contains("://")) url else "https://$url"
+            val host = runCatching { URI(candidate).host.orEmpty().lowercase(Locale.ROOT).removePrefix("www.") }.getOrDefault("")
             return when (host) {
                 "leetcode.com" -> LEETCODE
                 "codeforces.com" -> CODEFORCES
                 "geeksforgeeks.org", "practice.geeksforgeeks.org" -> GEEKSFORGEEKS
+                "codechef.com" -> CODECHEF
+                "atcoder.jp" -> ATCODER
+                "hackerrank.com" -> HACKERRANK
                 else -> OTHER
             }
         }
+
+        fun fromStored(value: String?, url: String): ProblemSite = entries.firstOrNull { it.name == value?.trim() } ?: fromUrl(url)
     }
 }
 

@@ -4,6 +4,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProblemLinksTest {
+    @Test fun siteCategoryFallsBackForEntriesCreatedBeforeTheDropdown() {
+        assertEquals(ProblemSite.LEETCODE, ProblemSite.fromStored(null, "https://leetcode.com/problems/two-sum/"))
+        assertEquals(ProblemSite.CODEFORCES, ProblemSite.fromStored("", "https://codeforces.com/contest/2123/problem/A"))
+        assertEquals(ProblemSite.GEEKSFORGEEKS, ProblemSite.fromStored("unknown-future-site", "https://geeksforgeeks.org/problems/example/1"))
+    }
+
+    @Test fun explicitSiteCategoryOverridesTheUrlAndSurvivesTrailingNewline() {
+        assertEquals(ProblemSite.CODECHEF, ProblemSite.fromStored("CODECHEF\n", "https://example.com/problem"))
+        assertEquals(ProblemSite.OTHER, ProblemSite.fromStored("OTHER", "https://leetcode.com/problems/two-sum/"))
+    }
+
+    @Test fun popularSitesAreRecognizedWithOptionalSchemeAndMixedCaseHost() {
+        assertEquals(ProblemSite.CODECHEF, ProblemSite.fromUrl("www.codechef.com/problems/FLOW001"))
+        assertEquals(ProblemSite.ATCODER, ProblemSite.fromUrl("https://WWW.ATCODER.JP/contests/abc100/tasks/abc100_a"))
+        assertEquals(ProblemSite.HACKERRANK, ProblemSite.fromUrl("https://www.hackerrank.com/challenges/example/problem"))
+        assertEquals(ProblemSite.OTHER, ProblemSite.fromUrl("https://codechef.com.other.example/problem"))
+    }
     @Test fun codeforcesContestAndProblemsetLinksReferToSameProblem() {
         val url = "https://codeforces.com/contest/2123/problem/A?locale=en"
         assertEquals("https://codeforces.com/problemset/problem/2123/A", ProblemLinks.normalize(url))

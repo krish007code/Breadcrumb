@@ -39,6 +39,11 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         private set
     var title by mutableStateOf(saved.get<String>("title").orEmpty())
         private set
+    var showWelcome by mutableStateOf(!settings.welcomeCompleted)
+        private set
+    var site by mutableStateOf(ProblemSite.fromStored(saved.get<String>("site"), saved.get<String>("url").orEmpty()))
+        private set
+    private var manualSite = saved.get<Boolean>("manualSite") ?: false
     var url by mutableStateOf(saved.get<String>("url").orEmpty())
         private set
     var query by mutableStateOf(saved.get<String>("query").orEmpty())
@@ -86,10 +91,19 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
     }
 
     fun updateTitle(value: String) { title = value; saved["title"] = value }
+    fun completeWelcome() { settings.welcomeCompleted = true; showWelcome = false }
+    fun showTutorial() { showWelcome = true }
+    fun updateSite(value: ProblemSite) {
+        site = value
+        manualSite = true
+        saved["site"] = value.name
+        saved["manualSite"] = true
+    }
     fun updateUrl(value: String) {
         val oldSuggestion = ProblemLinks.suggestedTitle(url)
         url = value
         saved["url"] = value
+        if (!manualSite) { site = ProblemSite.fromUrl(value); saved["site"] = site.name }
         if (title.isBlank() || title == oldSuggestion) updateTitle(ProblemLinks.suggestedTitle(value))
     }
     fun updateQuery(value: String) {
@@ -143,6 +157,43 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         selectedId = entry.id
         saved["selectedId"] = entry.id
         navigate("detail")
+    }
+
+    fun changeEntrySite(entry: NotebookEntry, value: ProblemSite) {
+        val tree = notebookUri ?: return
+        if (saving || entry.site == value) return
+        saving = true
+        loadJob?.cancel()
+        viewModelScope.launch {
+            try {
+                val updated = withContext(NonCancellable) { store.changeSite(tree, entry, value) }
+                entries = entries.map { if (it.id == entry.id) updated else it }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                report(error.message ?: "Unable to save this category.")
+            } finally { saving = false }
+        }
+    }
+
+    fun deleteEntry(entry: NotebookEntry) {
+        val tree = notebookUri ?: return
+        if (saving) return
+        saving = true
+        loadJob?.cancel()
+        viewModelScope.launch {
+            try {
+                withContext(NonCancellable) { store.delete(tree, entry) }
+                entries = entries.filterNot { it.id == entry.id }
+                selectedId = null
+                saved.remove<String>("selectedId")
+                page = detailOrigin
+                saved["page"] = page
+                report("Solution deleted.")
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                report(error.message ?: "Unable to delete this solution.")
+            } finally { saving = false; refresh() }
+        }
     }
 
     fun select(match: ProblemMatch) {
@@ -291,11 +342,12 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         if (cleanedTitle.isBlank()) { report("Give this problem a title."); return }
         val normalizedUrl = runCatching { ProblemLinks.normalize(url) }.getOrElse { report(it.message.orEmpty()); return }
         val photo = solutionUri ?: run { report("Add a photo of your solution."); return }
+        val selectedSite = site
         saving = true
         viewModelScope.launch {
             try {
                 // Finish an in-progress file write even if navigation or activity lifetime changes.
-                val entry = withContext(NonCancellable) { store.save(tree, cleanedTitle, normalizedUrl, photo) }
+                val entry = withContext(NonCancellable) { store.save(tree, cleanedTitle, normalizedUrl, photo, selectedSite) }
                 entries = (entries + entry).sortedByDescending(NotebookEntry::createdAt)
                 clearDraft()
                 page = "notebook"
@@ -314,6 +366,10 @@ class NotebookViewModel(application: Application, private val saved: SavedStateH
         updateTitle("")
         updateUrl("")
         updateQuery("")
+        manualSite = false
+        site = ProblemSite.OTHER
+        saved.remove<String>("site")
+        saved.remove<Boolean>("manualSite")
         scanUri = null
         solutionUri = null
         saved.remove<String>("scan")

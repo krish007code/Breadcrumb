@@ -14,6 +14,10 @@ import javax.crypto.spec.GCMParameterSpec
 class LocalSettings(context: Context) {
     private val preferences = context.getSharedPreferences("breadcrumb", Context.MODE_PRIVATE)
 
+    var welcomeCompleted: Boolean
+        get() = preferences.getBoolean("welcomeCompleted", false)
+        set(value) { preferences.edit().putBoolean("welcomeCompleted", value).apply() }
+
     var notebookUri: Uri?
         get() = preferences.getString("notebook", null)?.let(Uri::parse)
         set(value) { preferences.edit().putString("notebook", value?.toString()).apply() }
