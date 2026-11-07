@@ -56,8 +56,38 @@ object ProblemLinks {
                 return "https://codeforces.com/problemset/problem/${segments[2]}/${segments[3]}"
             }
         }
-        return URI(uri.scheme.lowercase(Locale.ROOT), null, host, uri.port,
-            uri.path.ifEmpty { "/" }, uri.query, null).toASCIIString()
+        val port = if (uri.port == -1) "" else ":${uri.port}"
+        val query = uri.rawQuery?.let { "?$it" }.orEmpty()
+        return "${uri.scheme.lowercase(Locale.ROOT)}://$host$port${uri.rawPath.orEmpty().ifEmpty { "/" }}$query"
+    }
+
+    fun clean(raw: String): String {
+        val normalized = normalize(raw)
+        val uri = URI(normalized)
+        val host = uri.host.removePrefix("www.")
+        val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+        if ((host == "geeksforgeeks.org" || host == "practice.geeksforgeeks.org") && segments.size >= 2 && segments[0] == "problems") {
+            return "https://www.geeksforgeeks.org/problems/${segments[1]}/1"
+        }
+        if (host == "codechef.com") {
+            val index = segments.indexOf("problems")
+            if (index >= 0 && index + 1 < segments.size) return "https://www.codechef.com/problems/${segments[index + 1]}"
+        }
+        if (host == "atcoder.jp" && segments.size >= 4 && segments[0] == "contests" && segments[2] == "tasks") {
+            return "https://atcoder.jp/contests/${segments[1]}/tasks/${segments[3]}"
+        }
+        if (host == "hackerrank.com" && segments.size >= 2 && segments[0] == "challenges") {
+            return "https://www.hackerrank.com/challenges/${segments[1]}/problem"
+        }
+        if (host == "codeforces.com" && segments.size >= 4 && segments[0] == "gym" && segments[2] == "problem") {
+            return "https://codeforces.com/gym/${segments[1]}/problem/${segments[3]}"
+        }
+        val tracking = setOf("fbclid", "gclid", "dclid", "gbraid", "wbraid", "msclkid", "mc_cid", "mc_eid", "igshid")
+        val parameters = uri.rawQuery.orEmpty().split('&').filter(String::isNotBlank).filterNot {
+            val key = URLDecoder.decode(it.substringBefore('='), "UTF-8").lowercase(Locale.ROOT)
+            key.startsWith("utm_") || key in tracking
+        }
+        return normalized.substringBefore('?') + if (parameters.isEmpty()) "" else "?${parameters.joinToString("&")}"
     }
 
     fun suggestedTitle(raw: String): String = runCatching {

@@ -4,6 +4,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ProblemLinksTest {
+    @Test fun cleaningRemovesTrackingButKeepsRequiredQueryValuesEncoded() {
+        val original = "https://example.com/problem?id=a%26b&utm_source=chat&lang=c%2B%2B&fbclid=123#section"
+        assertEquals("https://example.com/problem?id=a%26b&lang=c%2B%2B", ProblemLinks.clean(original))
+        assertEquals("https://example.com/problem?id=a%26b&utm_source=chat&lang=c%2B%2B&fbclid=123", ProblemLinks.normalize(original))
+    }
+
+    @Test fun cleaningPopularSitesPreservesProblemIdentifiers() {
+        assertEquals("https://www.geeksforgeeks.org/problems/two-sum1234/1", ProblemLinks.clean("https://practice.geeksforgeeks.org/problems/two-sum1234/1?utm_source=test"))
+        assertEquals("https://www.codechef.com/problems/FLOW001", ProblemLinks.clean("https://www.codechef.com/START200/problems/FLOW001?tab=statement"))
+        assertEquals("https://atcoder.jp/contests/abc100/tasks/abc100_a", ProblemLinks.clean("https://atcoder.jp/contests/abc100/tasks/abc100_a?lang=en"))
+        assertEquals("https://www.hackerrank.com/challenges/two-sum/problem", ProblemLinks.clean("https://www.hackerrank.com/challenges/two-sum/problem?isFullScreen=true"))
+        assertEquals("https://codeforces.com/gym/123456/problem/A", ProblemLinks.clean("https://codeforces.com/gym/123456/problem/A?locale=en"))
+    }
+
+    @Test fun cleaningIsIdempotentAndLeavesFunctionalParametersOnUnknownSites() {
+        val url = "https://example.com/problems/task?id=17&source=archive&utm_medium=share"
+        val clean = ProblemLinks.clean(url)
+        assertEquals("https://example.com/problems/task?id=17&source=archive", clean)
+        assertEquals(clean, ProblemLinks.clean(clean))
+        assertEquals("https://leetcode.com/problems/two-sum/", ProblemLinks.clean("https://leetcode.com/problems/two-sum/description/?envId=list"))
+    }
     @Test fun siteCategoryFallsBackForEntriesCreatedBeforeTheDropdown() {
         assertEquals(ProblemSite.LEETCODE, ProblemSite.fromStored(null, "https://leetcode.com/problems/two-sum/"))
         assertEquals(ProblemSite.CODEFORCES, ProblemSite.fromStored("", "https://codeforces.com/contest/2123/problem/A"))
