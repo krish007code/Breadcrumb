@@ -5,6 +5,8 @@ appId: dev.breadcrumb.app.qa
     when:
       visible: "Welcome to Breadcrumb"
     commands:
+      - scrollUntilVisible:
+          element: "Continue"
       - tapOn: "Continue"
 - tapOn: "Progress"
 - tapOn: "Calendar"
